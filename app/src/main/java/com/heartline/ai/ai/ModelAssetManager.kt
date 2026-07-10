@@ -7,9 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import java.security.MessageDigest
 import java.util.Locale
 
@@ -61,7 +58,7 @@ class ModelAssetManager(context: Context) {
         runCatching {
             modelDir.mkdirs()
             removeStaleModels()
-            downloadModel()
+            copyBundledAsset()
             verifyModel()
             partialFile.delete()
             _state.value = AssetLoadingState.Ready
@@ -72,30 +69,12 @@ class ModelAssetManager(context: Context) {
         }
     }
 
-    private fun downloadModel() {
-        var existingBytes = partialFile.length().takeIf { it in 1 until EXPECTED_MODEL_BYTES } ?: 0L
-        if (partialFile.length() >= EXPECTED_MODEL_BYTES) partialFile.delete()
-        val connection = (URL(MODEL_URL).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20_000
-            readTimeout = 60_000
-            instanceFollowRedirects = true
-            if (existingBytes > 0L) {
-                setRequestProperty("Range", "bytes=$existingBytes-")
-            }
-        }
-
-        if (connection.responseCode !in 200..299) {
-            throw IllegalStateException("Asset loading failed with HTTP ${connection.responseCode}.")
-        }
-        if (existingBytes > 0L && connection.responseCode != HttpURLConnection.HTTP_PARTIAL) {
-            partialFile.delete()
-            existingBytes = 0L
-        }
-
-        connection.inputStream.use { input ->
-            FileOutputStream(partialFile, existingBytes > 0L).buffered().use { output ->
+    private fun copyBundledAsset() {
+        partialFile.delete()
+        appContext.assets.open("$MODEL_ASSET_DIR/$MODEL_FILE_NAME").buffered().use { input ->
+            partialFile.outputStream().buffered().use { output ->
                 val buffer = ByteArray(1024 * 1024)
-                var downloaded = existingBytes
+                var downloaded = 0L
                 while (true) {
                     val read = input.read(buffer)
                     if (read < 0) break
@@ -158,10 +137,9 @@ class ModelAssetManager(context: Context) {
     private fun File.readTextOrNull(): String? = runCatching { readText().trim() }.getOrNull()
 
     companion object {
-        const val MODEL_FILE_NAME = "gemma-4-E2B-it.litertlm"
-        const val EXPECTED_MODEL_BYTES = 2_588_147_712L
-        const val EXPECTED_SHA256 = "181938105E0EEFD105961417E8DA75903EACDA102C4FCE9CE90F50B97139A63C"
-        const val MODEL_URL =
-            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+        const val MODEL_FILE_NAME = "qwen35_mm_q8_ekv2048.litertlm"
+        const val MODEL_ASSET_DIR = "models"
+        const val EXPECTED_MODEL_BYTES = 1_159_757_824L
+        const val EXPECTED_SHA256 = "92999FE4A9242C983E99892D6E57F368E8CD7A4534BC9A383A9551155B7F70A5"
     }
 }

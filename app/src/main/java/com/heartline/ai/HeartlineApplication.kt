@@ -20,7 +20,7 @@ class HeartlineApplication : Application() {
         appScope.launch {
             if (container.modelAssetManager.state.value is AssetLoadingState.Ready) {
                 runCatching { container.preloadAi() }
-                    .onFailure { Log.w("HeartlineAI", "Gemma 4 preload failed", it) }
+                    .onFailure { Log.w("HeartlineAI", "Qwen preload failed", it) }
             }
         }
     }

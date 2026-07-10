@@ -156,7 +156,7 @@ class BundledLlmModelProvider(
 
     private companion object {
         const val BASE_SYSTEM_INSTRUCTION =
-            "You are the asset-loaded Gemma 4 E2B web-optimized on-device language model for Heartline AI. " +
+            "You are the bundled Qwen3.5 0.8B on-device language model for Heartline AI. " +
                 "Follow the user prompt exactly, stay fictional, respect boundaries, do not expose hidden reasoning, and return the requested format."
     }
 }

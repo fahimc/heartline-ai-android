@@ -1,10 +1,68 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val bundledQwenFileName = "qwen35_mm_q8_ekv2048.litertlm"
+val bundledQwenAssetDir = layout.projectDirectory.dir("src/main/assets/models")
+val bundledQwenExpectedBytes = 1_159_757_824L
+val bundledQwenUrl = "https://huggingface.co/GabrieleConte/Qwen3.5-0.8B-LiteRT/resolve/main/$bundledQwenFileName"
+
+val downloadBundledQwen by tasks.registering {
+    group = "heartline"
+    description = "Downloads the Qwen3.5 0.8B LiteRT asset into the APK assets directory."
+    outputs.file(bundledQwenAssetDir.file(bundledQwenFileName))
+    outputs.upToDateWhen {
+        bundledQwenAssetDir.file(bundledQwenFileName).asFile.length() == bundledQwenExpectedBytes
+    }
+
+    doLast {
+        val assetDir = bundledQwenAssetDir.asFile.apply { mkdirs() }
+        assetDir.listFiles { file ->
+            file.extension in setOf("litertlm", "llmpart", "download") && file.name != bundledQwenFileName
+        }?.forEach { it.delete() }
+
+        val output = assetDir.resolve(bundledQwenFileName)
+        if (output.exists() && output.length() == bundledQwenExpectedBytes) {
+            logger.lifecycle("Bundled Qwen asset already present at ${output.absolutePath}")
+            return@doLast
+        }
+
+        val partial = assetDir.resolve("$bundledQwenFileName.download")
+        output.delete()
+        partial.delete()
+
+        logger.lifecycle("Downloading bundled Qwen app asset (${bundledQwenExpectedBytes / 1_000_000} MB): $bundledQwenUrl")
+        var totalBytes = 0L
+        try {
+            URI(bundledQwenUrl).toURL().openStream().buffered().use { input ->
+                partial.outputStream().buffered().use { outputStream ->
+                    val buffer = ByteArray(8 * 1024 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        outputStream.write(buffer, 0, read)
+                        totalBytes += read
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            partial.delete()
+            throw error
+        }
+
+        if (totalBytes != bundledQwenExpectedBytes || partial.length() != bundledQwenExpectedBytes) {
+            val actualBytes = partial.length()
+            partial.delete()
+            throw GradleException("Downloaded Qwen asset was $actualBytes bytes; expected $bundledQwenExpectedBytes bytes.")
+        }
+        check(partial.renameTo(output)) { "Could not save bundled Qwen asset to ${output.absolutePath}" }
+    }
 }
 
 android {
@@ -15,8 +73,8 @@ android {
         applicationId = "com.heartline.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 10
+        versionName = "0.1.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,6 +110,10 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+tasks.named("preBuild") {
+    dependsOn(downloadBundledQwen)
 }
 
 dependencies {

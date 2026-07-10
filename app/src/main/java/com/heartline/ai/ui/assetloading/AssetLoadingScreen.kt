@@ -100,7 +100,7 @@ fun AssetLoadingScreen(
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Size", color = Color(0xFF8E929F))
-                        Text("2.41 GB", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("1.08 GB", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Storage", color = Color(0xFF8E929F))
