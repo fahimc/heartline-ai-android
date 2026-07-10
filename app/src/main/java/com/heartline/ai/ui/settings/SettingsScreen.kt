@@ -1,0 +1,138 @@
+package com.heartline.ai.ui.settings
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.heartline.ai.ui.SettingsViewModel
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
+    val user by viewModel.user.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    val personas by viewModel.personas.collectAsState()
+    val memories by viewModel.memories.collectAsState()
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") } }
+            )
+        }
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Section("Profile") {
+                Text("Display name: ${user?.displayName ?: "Friend"}")
+                Text("Preferred tone: ${user?.preferredTone ?: "Supportive"}")
+            }
+            Section("Notifications") {
+                Text("Proactive messages: ${user?.notificationLevel ?: "Normal"}")
+                Text("Quiet hours: ${user?.quietHoursStart ?: "22:00"} to ${user?.quietHoursEnd ?: "07:00"}")
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Per-persona notification toggles")
+                    Switch(checked = true, onCheckedChange = {})
+                }
+            }
+            Section("Privacy") {
+                Text("Memories are stored locally in this demo database.")
+                Text("View, pin, delete, or clear stored memories.")
+                if (personas.isNotEmpty()) {
+                    ChipRow(personas.map { it.name }, personas.first().name) { selectedName ->
+                        personas.firstOrNull { it.name == selectedName }?.let { viewModel.selectPersona(it.id) }
+                    }
+                }
+                memories.take(6).forEach { memory ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text(memory.content, style = MaterialTheme.typography.bodyMedium)
+                            Text(memory.type, style = MaterialTheme.typography.labelSmall)
+                        }
+                        Switch(checked = memory.isPinned, onCheckedChange = { viewModel.pinMemory(memory.id, it) })
+                    }
+                    Divider()
+                }
+                OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
+            }
+            Section("AI Engine") {
+                Text("Model provider")
+                ChipRow(listOf("Mock", "Local placeholder", "Remote placeholder"), settings.aiProvider) {
+                    viewModel.updateAi(it, settings.responseLength, settings.memoryRetrieval)
+                }
+                Text("Response length")
+                ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
+                    viewModel.updateAi(settings.aiProvider, it, settings.memoryRetrieval)
+                }
+                Text("Memory retrieval")
+                ChipRow(listOf("Basic", "Strong", "Off"), settings.memoryRetrieval) {
+                    viewModel.updateAi(settings.aiProvider, settings.responseLength, it)
+                }
+            }
+            Section("Appearance") {
+                Text("Theme")
+                ChipRow(listOf("System", "Light", "Dark"), settings.theme) {
+                    viewModel.updateAppearance(it, settings.chatWallpaper, settings.bubbleStyle)
+                }
+                Text("Chat wallpaper")
+                ChipRow(listOf("Warm", "Clean", "Night"), settings.chatWallpaper) {
+                    viewModel.updateAppearance(settings.theme, it, settings.bubbleStyle)
+                }
+                Text("Bubble style")
+                ChipRow(listOf("Soft", "Compact", "Rounded"), settings.bubbleStyle) {
+                    viewModel.updateAppearance(settings.theme, settings.chatWallpaper, it)
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        content()
+    }
+}
+
+@Composable
+private fun ChipRow(options: List<String>, selected: String, onSelected: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        options.take(4).forEach { option ->
+            FilterChip(selected = selected == option, onClick = { onSelected(option) }, label = { Text(option) })
+        }
+    }
+}
