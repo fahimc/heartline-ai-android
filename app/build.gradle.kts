@@ -8,44 +8,87 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val bundledLlmFileName = "OLMo-2-1B-Instruct_q4_block32_ekv4096.litertlm"
-val bundledLlmAssetPath = "src/main/assets/models/$bundledLlmFileName"
-val bundledLlmExpectedBytes = 931_241_056L
-val bundledLlmUrl = "https://huggingface.co/litert-community/OLMo-2-1B-Instruct/resolve/main/$bundledLlmFileName"
-val bundledLlmFile = layout.projectDirectory.file(bundledLlmAssetPath)
+val bundledLlmFileName = "gemma-4-E2B-it.litertlm"
+val bundledLlmPartPrefix = "gemma-4-E2B-it"
+val bundledLlmAssetDir = layout.projectDirectory.dir("src/main/assets/models")
+val bundledLlmExpectedBytes = 2_588_147_712L
+val bundledLlmPartBytes = 512L * 1024L * 1024L
+val bundledLlmUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/$bundledLlmFileName"
 
 val downloadBundledLlm by tasks.registering {
     group = "heartline"
-    description = "Downloads the Apache-2.0 OLMo LiteRT-LM bundle into Android assets."
-    outputs.file(bundledLlmFile)
+    description = "Downloads the Apache-2.0 Gemma 4 E2B LiteRT-LM bundle into Android assets."
+    outputs.dir(bundledLlmAssetDir)
+    outputs.upToDateWhen {
+        val parts = bundledLlmAssetDir.asFile
+            .listFiles { file -> file.name.startsWith("$bundledLlmPartPrefix-") && file.name.endsWith(".llmpart") }
+            ?.toList()
+            .orEmpty()
+        parts.isNotEmpty() && parts.sumOf { it.length() } == bundledLlmExpectedBytes
+    }
 
     doLast {
-        val destination = bundledLlmFile.asFile
-        if (destination.exists() && destination.length() == bundledLlmExpectedBytes) {
-            logger.lifecycle("Bundled LLM already present: ${destination.absolutePath}")
+        val assetDir = bundledLlmAssetDir.asFile
+        val existingParts = assetDir
+            .listFiles { file -> file.name.startsWith("$bundledLlmPartPrefix-") && file.name.endsWith(".llmpart") }
+            ?.toList()
+            .orEmpty()
+        if (existingParts.isNotEmpty() && existingParts.sumOf { it.length() } == bundledLlmExpectedBytes) {
+            logger.lifecycle("Bundled Gemma 4 LLM parts already present in ${assetDir.absolutePath}")
             return@doLast
         }
 
-        destination.parentFile.mkdirs()
-        val partial = destination.resolveSibling("${destination.name}.download")
-        if (partial.exists()) partial.delete()
+        assetDir.mkdirs()
+        assetDir.listFiles { file ->
+            file.name == bundledLlmFileName ||
+                file.name.startsWith("$bundledLlmPartPrefix-") && file.name.endsWith(".llmpart") ||
+                file.name.startsWith("OLMo-2-1B-Instruct")
+        }?.forEach { it.delete() }
 
-        logger.lifecycle("Downloading bundled LLM (${bundledLlmExpectedBytes / 1_000_000} MB): $bundledLlmUrl")
-        URI(bundledLlmUrl).toURL().openStream().use { input ->
-            partial.outputStream().use { output ->
-                input.copyTo(output)
+        fun partFile(index: Int) = assetDir.resolve("$bundledLlmPartPrefix-${index.toString().padStart(3, '0')}.llmpart")
+        fun deleteParts() {
+            assetDir.listFiles { file -> file.name.startsWith("$bundledLlmPartPrefix-") && file.name.endsWith(".llmpart") }
+                ?.forEach { it.delete() }
+        }
+
+        logger.lifecycle("Downloading bundled Gemma 4 LLM (${bundledLlmExpectedBytes / 1_000_000} MB): $bundledLlmUrl")
+        var totalBytes = 0L
+        var partIndex = 0
+        var partBytes = 0L
+        var output = partFile(partIndex).outputStream().buffered()
+        try {
+            URI(bundledLlmUrl).toURL().openStream().buffered().use { input ->
+                val buffer = ByteArray(8 * 1024 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    var offset = 0
+                    while (offset < read) {
+                        if (partBytes == bundledLlmPartBytes) {
+                            output.close()
+                            partIndex += 1
+                            partBytes = 0L
+                            output = partFile(partIndex).outputStream().buffered()
+                        }
+                        val write = minOf(read - offset, (bundledLlmPartBytes - partBytes).toInt())
+                        output.write(buffer, offset, write)
+                        offset += write
+                        partBytes += write
+                        totalBytes += write
+                    }
+                }
             }
+        } catch (error: Throwable) {
+            output.close()
+            deleteParts()
+            throw error
+        } finally {
+            output.close()
         }
 
-        val downloadedBytes = partial.length()
-        if (downloadedBytes != bundledLlmExpectedBytes) {
-            partial.delete()
-            throw GradleException("Downloaded LLM size was $downloadedBytes bytes; expected $bundledLlmExpectedBytes bytes.")
-        }
-
-        if (destination.exists()) destination.delete()
-        if (!partial.renameTo(destination)) {
-            throw GradleException("Could not move downloaded LLM into ${destination.absolutePath}.")
+        if (totalBytes != bundledLlmExpectedBytes) {
+            deleteParts()
+            throw GradleException("Downloaded LLM size was $totalBytes bytes; expected $bundledLlmExpectedBytes bytes.")
         }
     }
 }
@@ -58,8 +101,8 @@ android {
         applicationId = "com.heartline.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -88,6 +131,7 @@ android {
 
     androidResources {
         noCompress += "litertlm"
+        noCompress += "llmpart"
     }
 }
 

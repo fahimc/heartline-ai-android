@@ -8,4 +8,5 @@ local.properties
 captures/
 externalNativeBuild/
 app/src/main/assets/models/*.litertlm
+app/src/main/assets/models/*.llmpart
 app/src/main/assets/models/*.download

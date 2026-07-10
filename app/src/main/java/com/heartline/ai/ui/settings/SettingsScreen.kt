@@ -89,7 +89,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
             }
             Section("AI Engine") {
                 Text("Model provider: Bundled on-device LLM")
-                Text("Model: OLMo-2-1B-Instruct Q4 LiteRT-LM")
+                Text("Model: Gemma 4 E2B IT LiteRT-LM")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
                     viewModel.updateAi("Bundled on-device LLM", it, settings.memoryRetrieval)
