@@ -18,6 +18,7 @@ import com.heartline.ai.notifications.ProactiveMessageScheduler
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
+    private val aiModelProvider = BundledLlmModelProvider(appContext)
     val database: AppDatabase = AppDatabase.get(appContext)
     val settingsStore = UserPreferencesDataStore(appContext)
     val userRepository = UserRepository(database.userDao(), settingsStore)
@@ -30,7 +31,7 @@ class AppContainer(context: Context) {
         MemoryExtractor()
     )
     val aiRepository = AiRepository(
-        BundledLlmModelProvider(appContext),
+        aiModelProvider,
         userRepository,
         personaRepository,
         chatRepository,
@@ -39,4 +40,8 @@ class AppContainer(context: Context) {
     val notificationHelper = NotificationHelper(appContext)
     val proactiveMessageScheduler = ProactiveMessageScheduler(appContext)
     val notificationRepository = NotificationRepository(proactiveMessageScheduler, notificationHelper)
+
+    suspend fun preloadAi() {
+        aiModelProvider.preload()
+    }
 }

@@ -25,6 +25,7 @@ import com.heartline.ai.notifications.NotificationHelper
 import com.heartline.ai.notifications.ProactiveMessageScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
 
@@ -196,14 +197,14 @@ class AiRepository(
     suspend fun generateReply(thread: ChatThreadEntity, userMessage: String): AiReply {
         val persona = personaRepository.getPersona(thread.personaId) ?: error("Missing persona")
         val memories = memoryRepository.getPinnedMemories(persona.id) +
-            memoryRepository.searchRelevantMemories(persona.id, userMessage, 5)
+            memoryRepository.searchRelevantMemories(persona.id, userMessage, 3)
         val request = AiChatRequest(
             persona = persona,
             user = userRepository.getUser(),
             thread = thread,
             mood = personaRepository.getMood(persona.id),
-            memories = memories.distinctBy { it.id },
-            recentMessages = chatRepository.getRecentMessages(thread.id, 18),
+            memories = memories.distinctBy { it.id }.take(3),
+            recentMessages = chatRepository.getRecentMessages(thread.id, 8),
             message = userMessage
         )
         var raw = ""
@@ -217,20 +218,17 @@ class AiRepository(
 
     private fun parseReply(raw: String): AiReply {
         val cleaned = raw.cleanupModelText()
-        val json = cleaned.extractJsonObject() ?: return AiReply(
-            messages = cleaned.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty(),
-            mood = "curious",
-            memoryCandidates = emptyList()
-        )
-        val messagesJson = json.optJSONArray("messages")
-        val messages = if (messagesJson == null) {
-            json.optString("message").takeIf { it.isNotBlank() }?.let(::listOf).orEmpty()
-        } else {
-            (0 until messagesJson.length()).mapNotNull { index ->
-                messagesJson.optString(index).cleanupModelText().takeIf { it.isNotBlank() }
+        val json = cleaned.extractJsonObject()
+        val messages = (json?.extractMessages() ?: cleaned.extractMessagesArray())
+            .mapNotNull { it.cleanupMessageBubble().takeIf(String::isNotBlank) }
+            .filterNot { it.isSchemaNoise() }
+            .take(3)
+            .ifEmpty {
+                cleaned.plainTextFallback()
+                    ?.let(::listOf)
+                    .orEmpty()
             }
-        }
-        val candidatesJson = json.optJSONArray("memory_candidates")
+        val candidatesJson = json?.optJSONArray("memory_candidates")
         val candidates = if (candidatesJson == null) {
             emptyList()
         } else {
@@ -243,14 +241,104 @@ class AiRepository(
                 )
             }.filter { it.content.isNotBlank() }
         }
-        return AiReply(messages = messages, mood = json.optString("mood", "soft"), memoryCandidates = candidates)
+        return AiReply(messages = messages, mood = json?.optString("mood", "soft") ?: "curious", memoryCandidates = candidates)
     }
 
     private fun String.extractJsonObject(): JSONObject? = runCatching {
         val start = indexOf('{')
+        if (start == -1) return@runCatching null
         val end = lastIndexOf('}')
-        if (start == -1 || end <= start) null else JSONObject(substring(start, end + 1))
+        val candidate = if (end > start) substring(start, end + 1) else "${substring(start)}}"
+        JSONObject(candidate)
     }.getOrNull()
+
+    private fun JSONObject.extractMessages(): List<String> {
+        val messagesJson = optJSONArray("messages")
+        return if (messagesJson == null) {
+            listOfNotNull(optString("message").takeIf { it.isNotBlank() })
+        } else {
+            messagesJson.toStringList()
+        }
+    }
+
+    private fun String.extractMessagesArray(): List<String> {
+        val keyIndex = indexOf("\"messages\"")
+        if (keyIndex == -1) return emptyList()
+        val start = indexOf('[', keyIndex)
+        if (start == -1) return emptyList()
+        val matchedEnd = findMatchingArrayEnd(start)
+        val end = if (matchedEnd != null && matchedEnd > start) matchedEnd else lastIndexOf(']').takeIf { it > start }
+        if (end == null || end <= start) return emptyList()
+        val candidate = substring(start, end + 1)
+        return runCatching { JSONArray(candidate).toStringList() }
+            .getOrElse { candidate.extractQuotedStrings() }
+    }
+
+    private fun JSONArray.toStringList(): List<String> =
+        (0 until length()).mapNotNull { index -> optString(index).takeIf { it.isNotBlank() } }
+
+    private fun String.extractQuotedStrings(): List<String> =
+        Regex("\"((?:\\\\.|[^\"\\\\])*)\"").findAll(this).mapNotNull { match ->
+            runCatching { JSONArray("[\"${match.groupValues[1]}\"]").optString(0) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+        }.toList()
+
+    private fun String.findMatchingArrayEnd(start: Int): Int? {
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for (index in start until length) {
+            val char = this[index]
+            if (escaped) {
+                escaped = false
+                continue
+            }
+            if (char == '\\' && inString) {
+                escaped = true
+                continue
+            }
+            if (char == '"') {
+                inString = !inString
+                continue
+            }
+            if (inString) continue
+            when (char) {
+                '[' -> depth += 1
+                ']' -> {
+                    depth -= 1
+                    if (depth == 0) return index
+                }
+            }
+        }
+        return null
+    }
+
+    private fun String.cleanupMessageBubble(): String =
+        cleanupModelText()
+            .trim()
+            .trim(',', '[', ']', '{', '}', '"')
+            .trim()
+
+    private fun String.isSchemaNoise(): Boolean {
+        val normalized = lowercase().trim()
+        return normalized in setOf(
+            "first bubble",
+            "second bubble",
+            "third bubble",
+            "fourth bubble",
+            "one short message",
+            "actual reply text",
+            "..."
+        ) || normalized.startsWith("messages") ||
+            normalized.startsWith("memory_candidates") ||
+            normalized.startsWith("mood")
+    }
+
+    private fun String.plainTextFallback(): String? {
+        if (startsWith("{") || contains("\"messages\"")) return null
+        return cleanupMessageBubble().takeIf { it.isNotBlank() }
+    }
 
     private fun String.cleanupModelText(): String =
         trim()

@@ -33,11 +33,15 @@ class BundledLlmModelProvider(
     private var engine: Engine? = null
 
     override fun generateReply(request: AiChatRequest): Flow<String> = flow {
-        emit(generateText(PromptBuilder.chatPrompt(request), temperature = 0.74))
+        emit(generateText(PromptBuilder.chatPrompt(request), temperature = 0.58))
     }.flowOn(Dispatchers.IO)
 
     override suspend fun generateProactiveMessage(request: ProactiveMessageRequest): String =
-        generateText(PromptBuilder.proactivePrompt(request), temperature = 0.82)
+        generateText(PromptBuilder.proactivePrompt(request), temperature = 0.68)
+
+    suspend fun preload() {
+        getEngine()
+    }
 
     override suspend fun extractMemories(conversation: List<MessageEntity>): List<MemoryCandidate> {
         if (conversation.size < 4) return emptyList()
@@ -60,8 +64,8 @@ class BundledLlmModelProvider(
         val conversationConfig = ConversationConfig(
             systemInstruction = Contents.of(BASE_SYSTEM_INSTRUCTION),
             samplerConfig = SamplerConfig(
-                topK = 40,
-                topP = 0.92,
+                topK = 24,
+                topP = 0.88,
                 temperature = temperature,
                 seed = System.currentTimeMillis().toInt()
             )
@@ -80,8 +84,8 @@ class BundledLlmModelProvider(
             Engine(
                 EngineConfig(
                     modelPath = model.absolutePath,
-                    backend = Backend.CPU(),
-                    maxNumTokens = 4096,
+                    backend = Backend.CPU(threadCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)),
+                    maxNumTokens = 2048,
                     cacheDir = cache.absolutePath
                 )
             ).also {

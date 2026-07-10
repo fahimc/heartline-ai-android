@@ -173,25 +173,37 @@ class ChatThreadViewModel(
             val thread = container.chatRepository.getThread(threadId) ?: return@launch
             container.chatRepository.addUserMessage(thread, text)
             isTyping.value = true
+            var threadForMemoryExtraction: ChatThreadEntity? = null
             try {
-                delay(700)
+                delay(150)
                 val currentThread = container.chatRepository.getThread(threadId) ?: thread
                 val reply = container.aiRepository.generateReply(currentThread, text)
                 for (bubble in reply.messages.take(4)) {
-                    delay(350)
+                    delay(120)
                     container.chatRepository.addAiMessage(currentThread, bubble)
                 }
                 if (reply.memoryCandidates.isNotEmpty()) {
                     container.memoryRepository.saveMemoryCandidates(thread.personaId, reply.memoryCandidates)
                 }
-                val recent = container.chatRepository.getRecentMessages(threadId, 10)
-                if (recent.size >= 6) {
-                    container.aiRepository.extractMemories(thread.personaId, recent)
+                if (currentThread.messageCount > 0 && currentThread.messageCount % 8 == 0) {
+                    threadForMemoryExtraction = currentThread
                 }
             } catch (error: Throwable) {
                 Log.e("HeartlineAI", "Bundled LLM reply failed", error)
             } finally {
                 isTyping.value = false
+            }
+            threadForMemoryExtraction?.let { extractionThread ->
+                viewModelScope.launch {
+                    runCatching {
+                        val recent = container.chatRepository.getRecentMessages(threadId, 12)
+                        if (recent.size >= 8) {
+                            container.aiRepository.extractMemories(extractionThread.personaId, recent)
+                        }
+                    }.onFailure { error ->
+                        Log.w("HeartlineAI", "Bundled LLM memory extraction failed", error)
+                    }
+                }
             }
         }
     }
