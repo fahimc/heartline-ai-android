@@ -4,6 +4,7 @@ import android.content.Context
 import com.heartline.ai.ai.BundledLlmModelProvider
 import com.heartline.ai.ai.MemoryExtractor
 import com.heartline.ai.ai.MemoryRetriever
+import com.heartline.ai.ai.ModelAssetManager
 import com.heartline.ai.ai.RelationshipEngine
 import com.heartline.ai.data.local.AppDatabase
 import com.heartline.ai.data.repository.AiRepository
@@ -18,7 +19,8 @@ import com.heartline.ai.notifications.ProactiveMessageScheduler
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
-    private val aiModelProvider = BundledLlmModelProvider(appContext)
+    val modelAssetManager = ModelAssetManager(appContext)
+    private val aiModelProvider = BundledLlmModelProvider(appContext, modelAssetManager)
     val database: AppDatabase = AppDatabase.get(appContext)
     val settingsStore = UserPreferencesDataStore(appContext)
     val userRepository = UserRepository(database.userDao(), settingsStore)

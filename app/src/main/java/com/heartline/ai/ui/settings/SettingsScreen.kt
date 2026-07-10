@@ -88,8 +88,8 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
             }
             Section("AI Engine") {
-                Text("Model provider: Bundled on-device LLM")
-                Text("Model: Gemma 4 E2B IT LiteRT-LM")
+                Text("Model provider: Asset-loaded on-device LLM")
+                Text("Model: Gemma 4 E2B IT Web LiteRT-LM")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
                     viewModel.updateAi("Bundled on-device LLM", it, settings.memoryRetrieval)

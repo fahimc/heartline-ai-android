@@ -2,6 +2,7 @@ package com.heartline.ai
 
 import android.app.Application
 import android.util.Log
+import com.heartline.ai.ai.AssetLoadingState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,8 +18,10 @@ class HeartlineApplication : Application() {
         container = AppContainer(this)
         container.notificationHelper.createChannels()
         appScope.launch {
-            runCatching { container.preloadAi() }
-                .onFailure { Log.w("HeartlineAI", "Bundled Gemma 4 preload failed", it) }
+            if (container.modelAssetManager.state.value is AssetLoadingState.Ready) {
+                runCatching { container.preloadAi() }
+                    .onFailure { Log.w("HeartlineAI", "Gemma 4 preload failed", it) }
+            }
         }
     }
 }

@@ -189,7 +189,7 @@ class ChatThreadViewModel(
                     threadForMemoryExtraction = currentThread
                 }
             } catch (error: Throwable) {
-                Log.e("HeartlineAI", "Bundled LLM reply failed", error)
+                Log.e("HeartlineAI", "Asset-loaded LLM reply failed", error)
             } finally {
                 isTyping.value = false
             }
@@ -201,7 +201,7 @@ class ChatThreadViewModel(
                             container.aiRepository.extractMemories(extractionThread.personaId, recent)
                         }
                     }.onFailure { error ->
-                        Log.w("HeartlineAI", "Bundled LLM memory extraction failed", error)
+                        Log.w("HeartlineAI", "Asset-loaded LLM memory extraction failed", error)
                     }
                 }
             }

@@ -26,7 +26,8 @@ import org.json.JSONObject
 import java.io.File
 
 class BundledLlmModelProvider(
-    context: Context
+    context: Context,
+    private val modelAssetManager: ModelAssetManager
 ) : AiModelProvider {
     private val appContext = context.applicationContext
     private val engineMutex = Mutex()
@@ -79,7 +80,7 @@ class BundledLlmModelProvider(
         engine?.let { return it }
         return engineMutex.withLock {
             engine?.let { return@withLock it }
-            val model = copyBundledModelToFilesDir()
+            val model = modelAssetManager.getReadyModelFile()
             val cache = File(appContext.cacheDir, "litertlm").apply { mkdirs() }
             Engine(
                 EngineConfig(
@@ -93,58 +94,6 @@ class BundledLlmModelProvider(
                 engine = it
             }
         }
-    }
-
-    private suspend fun copyBundledModelToFilesDir(): File = withContext(Dispatchers.IO) {
-        val outputDir = File(appContext.filesDir, "models").apply { mkdirs() }
-        val output = File(outputDir, MODEL_FILE_NAME)
-        if (output.exists() && output.length() == EXPECTED_MODEL_BYTES) {
-            return@withContext output
-        }
-
-        val partial = File(outputDir, "${MODEL_FILE_NAME}.copying")
-        if (partial.exists()) partial.delete()
-        val modelParts = appContext.assets.list(MODEL_ASSET_DIR)
-            .orEmpty()
-            .filter { it.startsWith("$MODEL_PART_PREFIX-") && it.endsWith(".$MODEL_PART_EXTENSION") }
-            .sorted()
-        if (modelParts.isEmpty()) {
-            throw IllegalStateException(
-                "Bundled Gemma 4 LLM asset parts were not found. Run the Gradle build so the model is downloaded into assets."
-            )
-        }
-
-        var copiedBytes = 0L
-        runCatching {
-            partial.outputStream().buffered().use { outputStream ->
-                modelParts.forEach { partName ->
-                    appContext.assets.open("$MODEL_ASSET_DIR/$partName").buffered().use { input ->
-                        val buffer = ByteArray(8 * 1024 * 1024)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            outputStream.write(buffer, 0, read)
-                            copiedBytes += read
-                        }
-                    }
-                }
-            }
-        }.getOrElse { error ->
-            partial.delete()
-            throw IllegalStateException(
-                "Bundled Gemma 4 LLM asset parts could not be copied.",
-                error
-            )
-        }
-
-        if (copiedBytes != EXPECTED_MODEL_BYTES || partial.length() != EXPECTED_MODEL_BYTES) {
-            val actualBytes = partial.length()
-            partial.delete()
-            throw IllegalStateException("Bundled Gemma 4 LLM copy was $actualBytes bytes; expected $EXPECTED_MODEL_BYTES bytes.")
-        }
-        if (output.exists()) output.delete()
-        check(partial.renameTo(output)) { "Could not prepare bundled Gemma 4 LLM at ${output.absolutePath}." }
-        output
     }
 
     private fun Message.plainText(): String =
@@ -206,13 +155,8 @@ class BundledLlmModelProvider(
             .trim()
 
     private companion object {
-        const val MODEL_FILE_NAME = "gemma-4-E2B-it.litertlm"
-        const val MODEL_ASSET_DIR = "models"
-        const val MODEL_PART_PREFIX = "gemma-4-E2B-it"
-        const val MODEL_PART_EXTENSION = "llmpart"
-        const val EXPECTED_MODEL_BYTES = 2_588_147_712L
         const val BASE_SYSTEM_INSTRUCTION =
-            "You are the bundled Gemma 4 E2B on-device language model for Heartline AI. " +
+            "You are the asset-loaded Gemma 4 E2B web-optimized on-device language model for Heartline AI. " +
                 "Follow the user prompt exactly, stay fictional, respect boundaries, do not expose hidden reasoning, and return the requested format."
     }
 }

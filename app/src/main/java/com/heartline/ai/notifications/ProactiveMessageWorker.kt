@@ -3,7 +3,9 @@ package com.heartline.ai.notifications
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.heartline.ai.ai.AssetLoadingState
 import com.heartline.ai.ai.BundledLlmModelProvider
+import com.heartline.ai.ai.ModelAssetManager
 import com.heartline.ai.ai.RoutineEngine
 import com.heartline.ai.data.local.AppDatabase
 import com.heartline.ai.domain.model.ProactiveMessageRequest
@@ -29,7 +31,9 @@ class ProactiveMessageWorker(
             .filter { System.currentTimeMillis() - it.updatedAt > TimeUnit.HOURS.toMillis(2) }
             .sortedByDescending { it.messageCount }
             .take(maxTotal)
-        val provider = BundledLlmModelProvider(applicationContext)
+        val modelAssets = ModelAssetManager(applicationContext)
+        if (modelAssets.state.value !is AssetLoadingState.Ready) return Result.success()
+        val provider = BundledLlmModelProvider(applicationContext, modelAssets)
         val routine = RoutineEngine()
         val notifier = NotificationHelper(applicationContext)
 
