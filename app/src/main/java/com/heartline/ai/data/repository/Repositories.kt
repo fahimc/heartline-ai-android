@@ -65,8 +65,9 @@ class PersonaRepository(private val personaDao: PersonaDao, private val moodDao:
     val personas: Flow<List<PersonaProfileEntity>> = personaDao.observePersonas()
 
     suspend fun seedIfNeeded() {
-        if (personaDao.countPersonas() == 0) {
-            personaDao.upsertAll(PersonaSeedData.personas())
+        val firstSeed = personaDao.countPersonas() == 0
+        personaDao.upsertAll(PersonaSeedData.personas())
+        if (firstSeed) {
             PersonaSeedData.moodStates().forEach { moodDao.upsert(it) }
         }
     }
@@ -214,10 +215,21 @@ class AiRepository(
         memoryRepository.saveMemoryCandidates(personaId, provider.extractMemories(messages))
     }
 
-    private fun parseReply(raw: String): AiReply = runCatching {
-        val json = JSONObject(raw)
-        val messagesJson = json.getJSONArray("messages")
-        val messages = (0 until messagesJson.length()).map { messagesJson.getString(it) }
+    private fun parseReply(raw: String): AiReply {
+        val cleaned = raw.cleanupModelText()
+        val json = cleaned.extractJsonObject() ?: return AiReply(
+            messages = cleaned.takeIf { it.isNotBlank() }?.let(::listOf).orEmpty(),
+            mood = "curious",
+            memoryCandidates = emptyList()
+        )
+        val messagesJson = json.optJSONArray("messages")
+        val messages = if (messagesJson == null) {
+            json.optString("message").takeIf { it.isNotBlank() }?.let(::listOf).orEmpty()
+        } else {
+            (0 until messagesJson.length()).mapNotNull { index ->
+                messagesJson.optString(index).cleanupModelText().takeIf { it.isNotBlank() }
+            }
+        }
         val candidatesJson = json.optJSONArray("memory_candidates")
         val candidates = if (candidatesJson == null) {
             emptyList()
@@ -231,10 +243,21 @@ class AiRepository(
                 )
             }.filter { it.content.isNotBlank() }
         }
-        AiReply(messages = messages, mood = json.optString("mood", "soft"), memoryCandidates = candidates)
-    }.getOrElse {
-        AiReply(messages = listOf("I am here. Tell me that again, a little slower?"), mood = "soft", memoryCandidates = emptyList())
+        return AiReply(messages = messages, mood = json.optString("mood", "soft"), memoryCandidates = candidates)
     }
+
+    private fun String.extractJsonObject(): JSONObject? = runCatching {
+        val start = indexOf('{')
+        val end = lastIndexOf('}')
+        if (start == -1 || end <= start) null else JSONObject(substring(start, end + 1))
+    }.getOrNull()
+
+    private fun String.cleanupModelText(): String =
+        trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
 }
 
 class NotificationRepository(

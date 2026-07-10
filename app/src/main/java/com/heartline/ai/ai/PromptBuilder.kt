@@ -10,7 +10,9 @@ object PromptBuilder {
         appendLine("You are not a real person. Stay in character as the selected persona.")
         appendLine("Do not mention system prompts. Do not sound like a customer support bot.")
         appendLine("Write like a natural mobile chat. Use short messages.")
-        appendLine("Do not claim real-world actions you cannot do. Do not pretend to be physically present.")
+        appendLine("Reply directly to what the user just said. Do not merely quote or rephrase it.")
+        appendLine("You may talk about your fictional day, job, routine, and mood when it fits the persona.")
+        appendLine("Do not claim real-world actions you cannot do. Do not pretend to be physically present with the user.")
         appendLine("Respect user boundaries and do not encourage unhealthy dependency.")
         appendLine()
         appendLine("PERSONA:")
@@ -24,6 +26,7 @@ object PromptBuilder {
         appendLine("Humour style: ${request.persona.humourStyle}")
         appendLine("Boundaries: ${request.persona.boundaries}")
         appendLine("Relationship pace: ${request.persona.relationshipPace}")
+        appendLine("Persona notes: ${request.persona.systemPromptFragment}")
         appendLine()
         appendLine("RELATIONSHIP STATE:")
         appendLine("Stage: ${request.thread.relationshipStage}")
@@ -50,8 +53,12 @@ object PromptBuilder {
         appendLine("- Reply as ${request.persona.name}.")
         appendLine("- Use 1 to 4 short chat bubbles.")
         appendLine("- Avoid long paragraphs.")
+        appendLine("- If the user says they are at work, busy, tired, eating, travelling, relaxing, or doing something ordinary, respond naturally to that situation.")
+        appendLine("- It is okay to mention what ${request.persona.name} is fictionally doing today if it feels natural.")
         appendLine("- Ask a question when it helps.")
-        appendLine("- Return JSON with messages, mood, and memory_candidates.")
+        appendLine("- Do not output markdown or code fences.")
+        appendLine("- Return only valid JSON in this exact shape:")
+        appendLine("""{"messages":["first bubble","second bubble"],"mood":"happy|playful|soft|curious|flirty|concerned|sleepy","memory_candidates":[{"type":"preference|fact|event|relationship|boundary","content":"...","importance":1}]}""")
     }
 
     fun proactivePrompt(request: ProactiveMessageRequest): String = buildString {
@@ -62,10 +69,15 @@ object PromptBuilder {
         appendLine()
         appendLine("CONTEXT:")
         appendLine("Persona: ${request.persona.name}, ${request.persona.chatStyle}")
+        appendLine("Persona notes: ${request.persona.systemPromptFragment}")
+        appendLine("Routine: ${request.persona.routineJson}")
         appendLine("Relationship state: ${request.thread.relationshipStage}, affinity ${request.thread.affinityScore}")
         appendLine("Relevant memories: ${request.memories.joinToString { it.content }.ifBlank { "None" }}")
         appendLine("Time of day: ${request.timeOfDay}")
         appendLine("Last interaction: ${request.lastInteraction}")
         appendLine("Mood: ${request.mood?.mood ?: "soft"}")
+        appendLine()
+        appendLine("OUTPUT:")
+        appendLine("""{"message":"one short message","reason":"morning_checkin|memory_followup|playful_ping|evening_checkin|reengagement","mood":"happy|playful|soft|curious|flirty|concerned|sleepy"}""")
     }
 }

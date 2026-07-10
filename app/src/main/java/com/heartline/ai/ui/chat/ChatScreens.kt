@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
@@ -30,7 +29,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -46,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -75,6 +74,14 @@ import com.heartline.ai.ui.ChatListViewModel
 import com.heartline.ai.ui.ChatThreadViewModel
 import com.heartline.ai.ui.components.MainBottomBar
 import com.heartline.ai.ui.components.PersonaPortrait
+import com.heartline.ai.ui.theme.HeartlineBlack
+import com.heartline.ai.ui.theme.HeartlineGreen
+import com.heartline.ai.ui.theme.HeartlineMuted
+import com.heartline.ai.ui.theme.HeartlinePanel
+import com.heartline.ai.ui.theme.HeartlinePanelHigh
+import com.heartline.ai.ui.theme.HeartlineRed
+import com.heartline.ai.ui.theme.HeartlineStroke
+import com.heartline.ai.ui.theme.HeartlineText
 import com.heartline.ai.util.chatTime
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,12 +96,16 @@ fun ChatListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Heartline AI", fontWeight = FontWeight.Bold) },
+                title = { Text("Messages", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onDiscover) { Icon(Icons.Default.Explore, contentDescription = "Discover") }
                     IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFFF7F1))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = HeartlineBlack,
+                    titleContentColor = HeartlineText,
+                    actionIconContentColor = HeartlineText
+                )
             )
         },
         bottomBar = {
@@ -104,7 +115,7 @@ fun ChatListScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFFF7F1))
+                .background(HeartlineBlack)
                 .padding(padding)
                 .padding(horizontal = 14.dp)
         ) {
@@ -115,7 +126,8 @@ fun ChatListScreen(
                 placeholder = { Text("Search chats") },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
-                singleLine = true
+                singleLine = true,
+                colors = heartlineTextFieldColors()
             )
             Spacer(Modifier.height(12.dp))
             if (rows.isEmpty()) {
@@ -126,8 +138,8 @@ fun ChatListScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text("No chats yet", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Discover companions and connect when someone feels right.")
+                    Text("No chats yet", color = HeartlineText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("Discover companions and connect when someone feels right.", color = HeartlineMuted)
                     Spacer(Modifier.height(14.dp))
                     Button(onClick = onDiscover) { Text("Discover companions") }
                 }
@@ -135,7 +147,7 @@ fun ChatListScreen(
                 LazyColumn {
                     items(rows, key = { it.thread.id }) { row ->
                         ChatRowItem(row, onClick = { onOpenThread(row.thread.id) })
-                        Divider(color = Color(0xFFFFE1EA))
+                        Divider(color = HeartlineStroke)
                     }
                 }
             }
@@ -148,7 +160,8 @@ fun ChatListScreen(
 private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
     ListItem(
         modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(18.dp))
+            .background(HeartlinePanel)
             .combinedClickable(onClick = onClick, onLongClick = {}),
         headlineContent = { Text(row.persona.name, fontWeight = FontWeight.Bold) },
         supportingContent = {
@@ -163,10 +176,15 @@ private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
             Column(horizontalAlignment = Alignment.End) {
                 Text(row.thread.updatedAt.chatTime(), style = MaterialTheme.typography.labelSmall)
                 if (row.thread.unreadCount > 0) Badge { Text(row.thread.unreadCount.toString()) }
-                Text(if (row.thread.unreadCount > 0) "typing..." else "online", style = MaterialTheme.typography.labelSmall, color = Color(0xFF1B8F6A))
+                Text(if (row.thread.unreadCount > 0) "typing..." else "online", style = MaterialTheme.typography.labelSmall, color = HeartlineGreen)
             }
         },
-        colors = androidx.compose.material3.ListItemDefaults.colors(containerColor = Color.Transparent),
+        colors = androidx.compose.material3.ListItemDefaults.colors(
+            containerColor = Color.Transparent,
+            headlineColor = HeartlineText,
+            supportingColor = HeartlineMuted,
+            trailingIconColor = HeartlineMuted
+        ),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     )
@@ -188,9 +206,7 @@ fun ChatThreadScreen(
     val itemCount = 1 + state.messages.size + if (state.isTyping) 1 else 0
 
     LaunchedEffect(itemCount, imeBottom) {
-        if (itemCount > 0) {
-            listState.animateScrollToItem(itemCount - 1)
-        }
+        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
     }
 
     Scaffold(
@@ -202,7 +218,7 @@ fun ChatThreadScreen(
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(persona?.name ?: "Chat", fontWeight = FontWeight.Bold)
-                            Text(if (state.isTyping) "typing..." else "online", style = MaterialTheme.typography.labelSmall, color = Color(0xFF237A61))
+                            Text(if (state.isTyping) "typing..." else "online", style = MaterialTheme.typography.labelSmall, color = HeartlineGreen)
                         }
                     }
                 },
@@ -212,14 +228,19 @@ fun ChatThreadScreen(
                     IconButton(onClick = {}) { Icon(Icons.Default.Person, contentDescription = "Persona profile") }
                     IconButton(onClick = {}) { Icon(Icons.Default.MoreVert, contentDescription = "More") }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFFF7F1))
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = HeartlineBlack,
+                    titleContentColor = HeartlineText,
+                    navigationIconContentColor = HeartlineText,
+                    actionIconContentColor = HeartlineText
+                )
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFFFFF7F1))
+                .background(HeartlineBlack)
                 .padding(padding)
                 .consumeWindowInsets(padding)
                 .imePadding()
@@ -234,15 +255,9 @@ fun ChatThreadScreen(
                 contentPadding = PaddingValues(top = 8.dp, bottom = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                item {
-                    DateSeparator("Today")
-                }
-                items(state.messages, key = { it.id }) { message ->
-                    MessageBubble(message)
-                }
-                if (state.isTyping) {
-                    item { TypingDots() }
-                }
+                item { DateSeparator("Today") }
+                items(state.messages, key = { it.id }) { message -> MessageBubble(message) }
+                if (state.isTyping) item { TypingDots() }
             }
             MessageInput(
                 value = input,
@@ -256,24 +271,24 @@ fun ChatThreadScreen(
 
 @Composable
 private fun MessageInput(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit, modifier: Modifier) {
-    Surface(color = Color(0xFFFFF7F1), shadowElevation = 8.dp, modifier = modifier) {
+    Surface(color = HeartlineBlack, shadowElevation = 8.dp, modifier = modifier) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = {}) { Text(":)") }
+            IconButton(onClick = {}) { Text(":)", color = HeartlineText) }
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("Message") },
                 shape = RoundedCornerShape(24.dp),
-                maxLines = 4
+                maxLines = 4,
+                colors = heartlineTextFieldColors()
             )
-            IconButton(onClick = {}) { Icon(Icons.Default.Mic, contentDescription = "Voice placeholder") }
-            IconButton(onClick = onSend) { Icon(Icons.Default.Send, contentDescription = "Send", tint = Color(0xFFFF6D8E)) }
+            IconButton(onClick = onSend) { Icon(Icons.Default.Send, contentDescription = "Send", tint = HeartlineRed) }
         }
     }
 }
@@ -289,16 +304,16 @@ private fun MessageBubble(message: MessageEntity) {
             Modifier
                 .fillMaxWidth(0.78f)
                 .clip(RoundedCornerShape(18.dp))
-                .background(if (isUser) Color(0xFFFFD3DF) else Color.White)
+                .background(if (isUser) HeartlineRed else HeartlinePanelHigh)
                 .combinedClickable(onClick = {}, onLongClick = { menu = true })
                 .padding(12.dp)
         ) {
-            Text(message.content)
+            Text(message.content, color = HeartlineText)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Text(
                     if (isUser) "${message.createdAt.chatTime()}  sent" else message.createdAt.chatTime(),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
+                    color = if (isUser) Color.White.copy(alpha = 0.76f) else HeartlineMuted
                 )
             }
         }
@@ -306,6 +321,9 @@ private fun MessageBubble(message: MessageEntity) {
     if (menu) {
         AlertDialog(
             onDismissRequest = { menu = false },
+            containerColor = HeartlinePanel,
+            titleContentColor = HeartlineText,
+            textContentColor = HeartlineMuted,
             title = { Text("Message") },
             text = { Text(message.content) },
             confirmButton = {
@@ -318,9 +336,7 @@ private fun MessageBubble(message: MessageEntity) {
                     Text("Copy")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { menu = false }) { Text("Delete") }
-            }
+            dismissButton = { TextButton(onClick = { menu = false }) { Text("Delete") } }
         )
     }
 }
@@ -332,8 +348,9 @@ private fun DateSeparator(text: String) {
             text,
             modifier = Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFFFE2EA))
+                .background(HeartlinePanelHigh)
                 .padding(horizontal = 12.dp, vertical = 5.dp),
+            color = HeartlineMuted,
             style = MaterialTheme.typography.labelMedium
         )
     }
@@ -342,8 +359,22 @@ private fun DateSeparator(text: String) {
 @Composable
 private fun TypingDots() {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-        Surface(shape = RoundedCornerShape(18.dp), color = Color.White) {
-            Text("typing...", Modifier.padding(14.dp), color = Color.Gray)
+        Surface(shape = RoundedCornerShape(18.dp), color = HeartlinePanelHigh) {
+            Text("typing...", Modifier.padding(14.dp), color = HeartlineMuted)
         }
     }
 }
+
+@Composable
+private fun heartlineTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = HeartlineText,
+    unfocusedTextColor = HeartlineText,
+    focusedBorderColor = HeartlineRed,
+    unfocusedBorderColor = HeartlineStroke,
+    focusedContainerColor = HeartlinePanel,
+    unfocusedContainerColor = HeartlinePanel,
+    focusedPlaceholderColor = HeartlineMuted,
+    unfocusedPlaceholderColor = HeartlineMuted,
+    focusedLeadingIconColor = HeartlineRed,
+    unfocusedLeadingIconColor = HeartlineMuted
+)

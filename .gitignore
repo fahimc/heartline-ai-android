@@ -7,3 +7,5 @@ local.properties
 .idea/
 captures/
 externalNativeBuild/
+app/src/main/assets/models/*.litertlm
+app/src/main/assets/models/*.download

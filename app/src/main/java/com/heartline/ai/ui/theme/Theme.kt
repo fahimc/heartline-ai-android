@@ -1,51 +1,43 @@
 package com.heartline.ai.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val Rose = Color(0xFFFF6D8E)
-val Blush = Color(0xFFFFD6E2)
-val Ink = Color(0xFF171117)
-val Wine = Color(0xFF5B2339)
-val Cream = Color(0xFFFFF7F1)
-val Mint = Color(0xFFA9E6D2)
-val Gold = Color(0xFFFFC76B)
+val HeartlineBlack = Color(0xFF050506)
+val HeartlineInk = Color(0xFF101115)
+val HeartlinePanel = Color(0xFF191B20)
+val HeartlinePanelHigh = Color(0xFF23252C)
+val HeartlineStroke = Color(0xFF343741)
+val HeartlineText = Color(0xFFF7F7F9)
+val HeartlineMuted = Color(0xFF9EA1AB)
+val HeartlineRed = Color(0xFFFF2D16)
+val HeartlineOrange = Color(0xFFFF7A18)
+val HeartlineViolet = Color(0xFF7B3FF2)
+val HeartlineGreen = Color(0xFF80D652)
+val HeartlineBlue = Color(0xFF2E8CFF)
 
-private val LightColors: ColorScheme = lightColorScheme(
-    primary = Rose,
+private val HeartlineColors: ColorScheme = darkColorScheme(
+    primary = HeartlineRed,
     onPrimary = Color.White,
-    secondary = Wine,
+    secondary = HeartlineViolet,
     onSecondary = Color.White,
-    tertiary = Mint,
-    background = Cream,
-    onBackground = Ink,
-    surface = Color.White,
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFFFEDF3)
-)
-
-private val DarkColors: ColorScheme = darkColorScheme(
-    primary = Rose,
-    onPrimary = Color.White,
-    secondary = Blush,
-    onSecondary = Ink,
-    tertiary = Gold,
-    background = Ink,
-    onBackground = Cream,
-    surface = Color(0xFF241A22),
-    onSurface = Cream,
-    surfaceVariant = Color(0xFF382632)
+    tertiary = HeartlineGreen,
+    background = HeartlineBlack,
+    onBackground = HeartlineText,
+    surface = HeartlinePanel,
+    onSurface = HeartlineText,
+    surfaceVariant = HeartlinePanelHigh,
+    onSurfaceVariant = HeartlineMuted,
+    outline = HeartlineStroke
 )
 
 @Composable
 fun HeartlineTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = HeartlineColors,
         typography = MaterialTheme.typography,
         content = content
     )

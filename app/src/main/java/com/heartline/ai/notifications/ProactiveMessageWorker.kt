@@ -3,7 +3,7 @@ package com.heartline.ai.notifications
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.heartline.ai.ai.MockAiModelProvider
+import com.heartline.ai.ai.BundledLlmModelProvider
 import com.heartline.ai.ai.RoutineEngine
 import com.heartline.ai.data.local.AppDatabase
 import com.heartline.ai.domain.model.ProactiveMessageRequest
@@ -29,7 +29,7 @@ class ProactiveMessageWorker(
             .filter { System.currentTimeMillis() - it.updatedAt > TimeUnit.HOURS.toMillis(2) }
             .sortedByDescending { it.messageCount }
             .take(maxTotal)
-        val provider = MockAiModelProvider()
+        val provider = BundledLlmModelProvider(applicationContext)
         val routine = RoutineEngine()
         val notifier = NotificationHelper(applicationContext)
 
@@ -48,8 +48,7 @@ class ProactiveMessageWorker(
                     lastInteraction = "recently"
                 )
             )
-            val message = runCatching { JSONObject(raw).getString("message") }
-                .getOrDefault("I was thinking about you. How has your day been?")
+            val message = raw.extractProactiveMessage() ?: return@forEach
             val saved = com.heartline.ai.data.local.entities.MessageEntity(
                 id = java.util.UUID.randomUUID().toString(),
                 threadId = thread.id,
@@ -69,4 +68,21 @@ class ProactiveMessageWorker(
         }
         return Result.success()
     }
+
+    private fun String.extractProactiveMessage(): String? {
+        val cleaned = cleanupModelText()
+        val json = runCatching {
+            val start = cleaned.indexOf('{')
+            val end = cleaned.lastIndexOf('}')
+            if (start == -1 || end <= start) null else JSONObject(cleaned.substring(start, end + 1))
+        }.getOrNull()
+        return (json?.optString("message") ?: cleaned).cleanupModelText().takeIf { it.isNotBlank() }
+    }
+
+    private fun String.cleanupModelText(): String =
+        trim()
+            .removePrefix("```json")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
 }

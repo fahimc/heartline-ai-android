@@ -68,7 +68,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
             }
             Section("Privacy") {
-                Text("Memories are stored locally in this demo database.")
+                Text("Memories are stored locally on this device.")
                 Text("View, pin, delete, or clear stored memories.")
                 if (personas.isNotEmpty()) {
                     ChipRow(personas.map { it.name }, personas.first().name) { selectedName ->
@@ -88,17 +88,15 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
             }
             Section("AI Engine") {
-                Text("Model provider")
-                ChipRow(listOf("Mock", "Local placeholder", "Remote placeholder"), settings.aiProvider) {
-                    viewModel.updateAi(it, settings.responseLength, settings.memoryRetrieval)
-                }
+                Text("Model provider: Bundled on-device LLM")
+                Text("Model: OLMo-2-1B-Instruct Q4 LiteRT-LM")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
-                    viewModel.updateAi(settings.aiProvider, it, settings.memoryRetrieval)
+                    viewModel.updateAi("Bundled on-device LLM", it, settings.memoryRetrieval)
                 }
                 Text("Memory retrieval")
                 ChipRow(listOf("Basic", "Strong", "Off"), settings.memoryRetrieval) {
-                    viewModel.updateAi(settings.aiProvider, settings.responseLength, it)
+                    viewModel.updateAi("Bundled on-device LLM", settings.responseLength, it)
                 }
             }
             Section("Appearance") {

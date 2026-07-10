@@ -1,14 +1,13 @@
 package com.heartline.ai.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -46,18 +44,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.heartline.ai.data.local.entities.PersonaProfileEntity
-import com.heartline.ai.ui.theme.Blush
-import com.heartline.ai.ui.theme.Cream
-import com.heartline.ai.ui.theme.Gold
-import com.heartline.ai.ui.theme.Ink
-import com.heartline.ai.ui.theme.Mint
-import com.heartline.ai.ui.theme.Rose
-import com.heartline.ai.ui.theme.Wine
+import com.heartline.ai.ui.theme.HeartlineBlack
+import com.heartline.ai.ui.theme.HeartlineBlue
+import com.heartline.ai.ui.theme.HeartlineGreen
+import com.heartline.ai.ui.theme.HeartlineInk
+import com.heartline.ai.ui.theme.HeartlineMuted
+import com.heartline.ai.ui.theme.HeartlineOrange
+import com.heartline.ai.ui.theme.HeartlinePanel
+import com.heartline.ai.ui.theme.HeartlinePanelHigh
+import com.heartline.ai.ui.theme.HeartlineRed
+import com.heartline.ai.ui.theme.HeartlineStroke
+import com.heartline.ai.ui.theme.HeartlineText
+import com.heartline.ai.ui.theme.HeartlineViolet
 import com.heartline.ai.util.initials
 import com.heartline.ai.util.jsonListText
 
@@ -66,11 +71,51 @@ fun HeartlineBackground(modifier: Modifier = Modifier, content: @Composable () -
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF2B1725), Color(0xFF6D3048), Color(0xFFFFC1CF))
+            .background(Brush.verticalGradient(listOf(HeartlineBlack, HeartlineInk, Color(0xFF190906))))
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val grid = 58.dp.toPx()
+            var x = 0f
+            while (x < size.width) {
+                drawLine(
+                    color = HeartlineStroke.copy(alpha = 0.34f),
+                    start = androidx.compose.ui.geometry.Offset(x, 0f),
+                    end = androidx.compose.ui.geometry.Offset(x, size.height),
+                    strokeWidth = 1f
                 )
+                x += grid
+            }
+            var y = 0f
+            while (y < size.height) {
+                drawLine(
+                    color = HeartlineStroke.copy(alpha = 0.24f),
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width, y),
+                    strokeWidth = 1f
+                )
+                y += grid
+            }
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(HeartlineRed.copy(alpha = 0.42f), Color.Transparent),
+                    center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height * 0.95f),
+                    radius = size.width * 0.9f
+                ),
+                radius = size.width,
+                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height)
             )
+        }
+        content()
+    }
+}
+
+@Composable
+fun HeartlineCard(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    Card(
+        modifier = modifier.border(1.dp, HeartlineStroke.copy(alpha = 0.7f), RoundedCornerShape(28.dp)),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = HeartlinePanel.copy(alpha = 0.96f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         content()
     }
@@ -86,46 +131,65 @@ fun PersonaPortrait(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(colors))
+            .background(Brush.verticalGradient(colors))
+            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(28.dp))
     ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val tile = Color.White.copy(alpha = 0.12f)
+            for (index in 0..8) {
+                val left = size.width * ((index * 17 % 86) / 100f)
+                val top = size.height * ((index * 23 % 76) / 100f)
+                drawRoundRect(
+                    color = tile,
+                    topLeft = androidx.compose.ui.geometry.Offset(left, top),
+                    size = androidx.compose.ui.geometry.Size(34.dp.toPx(), 34.dp.toPx()),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+                )
+            }
+
+            val face = androidx.compose.ui.geometry.Offset(size.width * 0.5f, size.height * 0.38f)
+            drawCircle(Color(0xFFFFC1A7).copy(alpha = 0.92f), radius = size.minDimension * 0.15f, center = face)
+            drawCircle(
+                color = Color(0xFF1B1210).copy(alpha = 0.88f),
+                radius = size.minDimension * 0.18f,
+                center = face.copy(y = face.y - size.minDimension * 0.03f),
+                style = Stroke(width = size.minDimension * 0.08f)
+            )
+            val shoulders = Path().apply {
+                moveTo(size.width * 0.22f, size.height * 0.84f)
+                cubicTo(size.width * 0.3f, size.height * 0.58f, size.width * 0.7f, size.height * 0.58f, size.width * 0.78f, size.height * 0.84f)
+                close()
+            }
+            drawPath(shoulders, Color(0xFF151518).copy(alpha = 0.92f))
+        }
         Box(
             Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.45f), Color.Transparent),
-                        radius = 650f
-                    )
-                )
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.7f))))
         )
-        Column(
+        Text(
+            initials(persona.name),
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Box(
-                Modifier
-                    .size(132.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.24f))
-                    .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    initials(persona.name),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(
-                "Generated companion portrait",
-                color = Color.White.copy(alpha = 0.76f),
-                style = MaterialTheme.typography.labelMedium
-            )
-        }
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.24f))
+                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.headlineMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            "AI portrait",
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(14.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.48f))
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            color = Color.White.copy(alpha = 0.82f),
+            style = MaterialTheme.typography.labelSmall
+        )
         if (showAiBadge) {
             Text(
                 "AI",
@@ -133,7 +197,7 @@ fun PersonaPortrait(
                     .align(Alignment.TopEnd)
                     .padding(16.dp)
                     .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.32f))
+                    .background(HeartlineRed)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 color = Color.White,
                 style = MaterialTheme.typography.labelLarge,
@@ -146,15 +210,48 @@ fun PersonaPortrait(
 @Composable
 fun TagRow(tags: List<String>, modifier: Modifier = Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        tags.take(3).forEach { tag ->
-            AssistChip(onClick = {}, label = { Text(tag, maxLines = 1, overflow = TextOverflow.Ellipsis) })
-        }
+        tags.take(3).forEach { tag -> HeartlinePill(tag) }
+    }
+}
+
+@Composable
+fun HeartlinePill(text: String, modifier: Modifier = Modifier, accent: Color = HeartlineOrange) {
+    Text(
+        text,
+        modifier = modifier
+            .clip(CircleShape)
+            .background(HeartlinePanelHigh)
+            .border(1.dp, accent.copy(alpha = 0.28f), CircleShape)
+            .padding(horizontal = 11.dp, vertical = 6.dp),
+        color = HeartlineText,
+        style = MaterialTheme.typography.labelMedium,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+@Composable
+fun HeartlineIconAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(58.dp)
+            .clip(CircleShape)
+            .background(color)
+    ) {
+        Icon(icon, contentDescription = label, tint = Color.White)
     }
 }
 
 @Composable
 fun MainBottomBar(current: String, unreadCount: Int, onDiscover: () -> Unit, onChats: () -> Unit) {
-    NavigationBar(containerColor = Color(0xFF21151F), contentColor = Color.White) {
+    NavigationBar(containerColor = HeartlineBlack.copy(alpha = 0.98f), contentColor = Color.White) {
         NavigationBarItem(
             selected = current == "discover",
             onClick = onDiscover,
@@ -166,9 +263,7 @@ fun MainBottomBar(current: String, unreadCount: Int, onDiscover: () -> Unit, onC
             onClick = onChats,
             icon = {
                 BadgedBox(
-                    badge = {
-                        if (unreadCount > 0) Badge { Text(unreadCount.toString()) }
-                    }
+                    badge = { if (unreadCount > 0) Badge { Text(unreadCount.toString()) } }
                 ) { Icon(Icons.Default.ChatBubble, contentDescription = "Chats") }
             },
             label = { Text("Chats") }
@@ -201,6 +296,9 @@ fun FloatingChatsButton(unread: Int, onClick: () -> Unit, modifier: Modifier = M
 fun ConnectionDialog(personaName: String, onStartChat: () -> Unit, onKeepBrowsing: () -> Unit) {
     AlertDialog(
         onDismissRequest = onKeepBrowsing,
+        containerColor = HeartlinePanel,
+        titleContentColor = HeartlineText,
+        textContentColor = HeartlineMuted,
         title = { Text("Connection made") },
         text = { Text("$personaName is ready to chat when you are.") },
         confirmButton = { Button(onClick = onStartChat) { Text("Start chatting") } },
@@ -218,12 +316,12 @@ fun FullProfileCard(
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = HeartlinePanel)
     ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PersonaPortrait(persona, Modifier.fillMaxWidth().height(230.dp))
-            Text("${persona.name}, ${persona.age}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(persona.bio, style = MaterialTheme.typography.bodyMedium)
+            Text("${persona.name}, ${persona.age}", style = MaterialTheme.typography.headlineSmall, color = HeartlineText, fontWeight = FontWeight.Bold)
+            Text(persona.bio, style = MaterialTheme.typography.bodyMedium, color = HeartlineMuted)
             ProfileSection("Personality", persona.personalityJson.jsonListText().joinToString(", "))
             ProfileSection("Interests", persona.interestsJson.jsonListText().joinToString(", "))
             ProfileSection("Chat style", persona.chatStyle)
@@ -242,8 +340,8 @@ fun FullProfileCard(
 @Composable
 private fun ProfileSection(title: String, body: String) {
     Column {
-        Text(title, style = MaterialTheme.typography.labelLarge, color = Wine, fontWeight = FontWeight.Bold)
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = Ink.copy(alpha = 0.82f))
+        Text(title, style = MaterialTheme.typography.labelLarge, color = HeartlineOrange, fontWeight = FontWeight.Bold)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = HeartlineText.copy(alpha = 0.82f))
     }
 }
 
@@ -263,12 +361,12 @@ fun EmptyComingSoon(onRefresh: () -> Unit) {
 }
 
 private fun palette(uri: String): List<Color> = when (uri.substringAfter(":")) {
-    "cream" -> listOf(Cream, Gold, Rose)
-    "coral" -> listOf(Color(0xFFFF8A65), Color(0xFFFFB199), Wine)
-    "plum" -> listOf(Color(0xFF6E3A5A), Rose, Blush)
-    "sunrise" -> listOf(Gold, Color(0xFFFF7A7A), Color(0xFF61304E))
-    "lavender" -> listOf(Color(0xFFB99CFF), Blush, Color(0xFF4B3764))
-    "teal" -> listOf(Mint, Color(0xFF5E6AD2), Ink)
-    "wine" -> listOf(Wine, Color(0xFFC75772), Gold)
-    else -> listOf(Rose, Blush, Wine)
+    "cream" -> listOf(Color(0xFFFFA047), HeartlineRed, HeartlinePanel)
+    "coral" -> listOf(Color(0xFFFF321D), Color(0xFFFF7A18), HeartlinePanel)
+    "plum" -> listOf(Color(0xFF8E163F), HeartlineRed, HeartlinePanel)
+    "sunrise" -> listOf(HeartlineOrange, HeartlineRed, HeartlinePanel)
+    "lavender" -> listOf(HeartlineViolet, Color(0xFFFF3864), HeartlinePanel)
+    "teal" -> listOf(HeartlineBlue, HeartlineViolet, HeartlinePanel)
+    "wine" -> listOf(Color(0xFF5C1023), HeartlineRed, HeartlinePanel)
+    else -> listOf(HeartlineRed, HeartlineOrange, HeartlinePanel)
 }

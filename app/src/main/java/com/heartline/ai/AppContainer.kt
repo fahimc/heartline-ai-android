@@ -1,9 +1,9 @@
 package com.heartline.ai
 
 import android.content.Context
+import com.heartline.ai.ai.BundledLlmModelProvider
 import com.heartline.ai.ai.MemoryExtractor
 import com.heartline.ai.ai.MemoryRetriever
-import com.heartline.ai.ai.MockAiModelProvider
 import com.heartline.ai.ai.RelationshipEngine
 import com.heartline.ai.data.local.AppDatabase
 import com.heartline.ai.data.repository.AiRepository
@@ -30,7 +30,7 @@ class AppContainer(context: Context) {
         MemoryExtractor()
     )
     val aiRepository = AiRepository(
-        MockAiModelProvider(),
+        BundledLlmModelProvider(appContext),
         userRepository,
         personaRepository,
         chatRepository,
