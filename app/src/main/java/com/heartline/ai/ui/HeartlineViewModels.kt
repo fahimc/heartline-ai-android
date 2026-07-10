@@ -190,6 +190,10 @@ class ChatThreadViewModel(
                 }
             } catch (error: Throwable) {
                 Log.e("HeartlineAI", "Asset-loaded LLM reply failed", error)
+                container.chatRepository.addAiMessage(
+                    thread,
+                    "I could not finish setting up chat on this device. Please reopen Heartline and let Asset Loading complete again."
+                )
             } finally {
                 isTyping.value = false
             }

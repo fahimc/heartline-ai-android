@@ -46,7 +46,7 @@ class ModelAssetManager(context: Context) {
 
     fun getReadyModelFile(): File {
         if (!isModelReady()) {
-            throw IllegalStateException("Gemma model is not loaded. Complete Asset Loading before chatting.")
+            throw IllegalStateException("App assets are not ready. Complete Asset Loading before chatting.")
         }
         return modelFile
     }
@@ -85,7 +85,7 @@ class ModelAssetManager(context: Context) {
         }
 
         if (connection.responseCode !in 200..299) {
-            throw IllegalStateException("Model download failed with HTTP ${connection.responseCode}.")
+            throw IllegalStateException("Asset loading failed with HTTP ${connection.responseCode}.")
         }
         if (existingBytes > 0L && connection.responseCode != HttpURLConnection.HTTP_PARTIAL) {
             partialFile.delete()
@@ -107,7 +107,7 @@ class ModelAssetManager(context: Context) {
         }
 
         if (partialFile.length() != EXPECTED_MODEL_BYTES) {
-            throw IllegalStateException("Downloaded model was ${partialFile.length()} bytes; expected $EXPECTED_MODEL_BYTES bytes.")
+            throw IllegalStateException("Loaded assets were ${partialFile.length()} bytes; expected $EXPECTED_MODEL_BYTES bytes.")
         }
         if (modelFile.exists()) modelFile.delete()
         check(partialFile.renameTo(modelFile)) { "Could not save loaded model asset." }
@@ -118,7 +118,7 @@ class ModelAssetManager(context: Context) {
         if (!actual.equals(EXPECTED_SHA256, ignoreCase = true)) {
             modelFile.delete()
             verifiedMarkerFile.delete()
-            throw IllegalStateException("Downloaded model checksum did not match.")
+            throw IllegalStateException("Loaded assets could not be verified.")
         }
         verifiedMarkerFile.writeText(EXPECTED_SHA256)
     }
@@ -158,10 +158,10 @@ class ModelAssetManager(context: Context) {
     private fun File.readTextOrNull(): String? = runCatching { readText().trim() }.getOrNull()
 
     companion object {
-        const val MODEL_FILE_NAME = "gemma-4-E2B-it-web.litertlm"
-        const val EXPECTED_MODEL_BYTES = 2_008_432_640L
-        const val EXPECTED_SHA256 = "3A08E8D94E23B814AE5414469C370C503813949ACB8CEAA17E4EBF8A35AF35B5"
+        const val MODEL_FILE_NAME = "gemma-4-E2B-it.litertlm"
+        const val EXPECTED_MODEL_BYTES = 2_588_147_712L
+        const val EXPECTED_SHA256 = "181938105E0EEFD105961417E8DA75903EACDA102C4FCE9CE90F50B97139A63C"
         const val MODEL_URL =
-            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it-web.litertlm"
+            "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
     }
 }
