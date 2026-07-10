@@ -87,16 +87,16 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 }
                 OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
             }
-            Section("AI Engine") {
-                Text("Model provider: Asset-loaded on-device LLM")
-                Text("Model: Gemma 4 E2B IT Web LiteRT-LM")
+            Section("App Assets") {
+                Text("Companion assets are stored locally on this device.")
+                Text("Asset loading keeps the app install small while preserving private on-device chat.")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
-                    viewModel.updateAi("Bundled on-device LLM", it, settings.memoryRetrieval)
+                    viewModel.updateAi("Asset-loaded on-device chat", it, settings.memoryRetrieval)
                 }
                 Text("Memory retrieval")
                 ChipRow(listOf("Basic", "Strong", "Off"), settings.memoryRetrieval) {
-                    viewModel.updateAi("Bundled on-device LLM", settings.responseLength, it)
+                    viewModel.updateAi("Asset-loaded on-device chat", settings.responseLength, it)
                 }
             }
             Section("Appearance") {

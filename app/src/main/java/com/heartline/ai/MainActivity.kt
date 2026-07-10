@@ -12,14 +12,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.heartline.ai.ai.AssetLoadingState
 import com.heartline.ai.navigation.HeartlineNav
 import com.heartline.ai.navigation.Routes
 import com.heartline.ai.ui.assetloading.AssetLoadingScreen
+import com.heartline.ai.ui.splash.HeartlineSplashScreen
 import com.heartline.ai.ui.theme.HeartlineTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -40,6 +45,11 @@ private fun HeartlineRoot(openThreadId: String?) {
     val settings by app.container.userRepository.settings.collectAsState(initial = null)
     val assetLoadingState by app.container.modelAssetManager.state.collectAsState()
     val scope = rememberCoroutineScope()
+    var splashComplete by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(1_200)
+        splashComplete = true
+    }
     LaunchedEffect(Unit) {
         app.container.personaRepository.seedIfNeeded()
         app.container.proactiveMessageScheduler.schedule()
@@ -51,7 +61,9 @@ private fun HeartlineRoot(openThreadId: String?) {
         }
     }
     val current = settings
-    if (current == null) {
+    if (!splashComplete) {
+        HeartlineSplashScreen()
+    } else if (current == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
         }

@@ -87,7 +87,7 @@ fun AssetLoadingScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "Heartline needs the real Gemma 4 E2B model before AI chat can run on this device.",
+                        text = "Heartline is preparing the app assets needed for private on-device chat.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color(0xFFC7C7D1)
                     )
@@ -95,11 +95,11 @@ fun AssetLoadingScreen(
 
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Model", color = Color(0xFF8E929F))
-                        Text("Gemma 4 E2B IT Web", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Package", color = Color(0xFF8E929F))
+                        Text("Companion assets", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Download", color = Color(0xFF8E929F))
+                        Text("Size", color = Color(0xFF8E929F))
                         Text("1.87 GB", color = Color.White, fontWeight = FontWeight.SemiBold)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -153,7 +153,7 @@ fun AssetLoadingScreen(
                     }
                     Text(
                         text = when {
-                            downloading != null -> "Loading asset"
+                            downloading != null -> "Loading assets"
                             failed != null -> "Retry asset loading"
                             else -> "Start asset loading"
                         }
@@ -161,7 +161,7 @@ fun AssetLoadingScreen(
                 }
 
                 Text(
-                    text = "Use Wi-Fi. The app will verify the model before enabling chat.",
+                    text = "Use Wi-Fi. Heartline will verify everything before opening chat.",
                     color = Color(0xFF8E929F),
                     style = MaterialTheme.typography.bodySmall
                 )
