@@ -178,6 +178,9 @@ class ChatThreadViewModel(
                 delay(150)
                 val currentThread = container.chatRepository.getThread(threadId) ?: thread
                 val reply = container.aiRepository.generateReply(currentThread, text)
+                if (reply.messages.isEmpty()) {
+                    error("Local chat generated an empty reply.")
+                }
                 for (bubble in reply.messages.take(4)) {
                     delay(120)
                     container.chatRepository.addAiMessage(currentThread, bubble)

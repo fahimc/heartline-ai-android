@@ -156,7 +156,6 @@ class BundledLlmModelProvider(
 
     private companion object {
         const val BASE_SYSTEM_INSTRUCTION =
-            "You are the bundled Qwen3.5 0.8B on-device language model for Heartline AI. " +
-                "Follow the user prompt exactly, stay fictional, respect boundaries, do not expose hidden reasoning, and return the requested format."
+            "Write short fictional companion chat replies. Be warm, natural, and safe."
     }
 }

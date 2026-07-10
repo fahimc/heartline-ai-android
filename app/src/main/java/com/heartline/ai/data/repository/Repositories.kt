@@ -224,9 +224,7 @@ class AiRepository(
             .filterNot { it.isSchemaNoise() }
             .take(3)
             .ifEmpty {
-                cleaned.plainTextFallback()
-                    ?.let(::listOf)
-                    .orEmpty()
+                cleaned.plainTextBubbles()
             }
         val candidatesJson = json?.optJSONArray("memory_candidates")
         val candidates = if (candidatesJson == null) {
@@ -338,6 +336,25 @@ class AiRepository(
     private fun String.plainTextFallback(): String? {
         if (startsWith("{") || contains("\"messages\"")) return null
         return cleanupMessageBubble().takeIf { it.isNotBlank() }
+    }
+
+    private fun String.plainTextBubbles(): List<String> {
+        if (startsWith("{") || contains("\"messages\"")) return emptyList()
+        val cleaned = cleanupMessageBubble()
+            .replace(Regex("(?i)^assistant\\s*[:\\-]\\s*"), "")
+            .trim()
+        if (cleaned.isBlank()) return emptyList()
+        val lineBubbles = cleaned
+            .lines()
+            .map { it.trim().trim('-', '•', '*').trim() }
+            .filter { it.isNotBlank() }
+            .filterNot { it.isSchemaNoise() }
+        val source = if (lineBubbles.size > 1) lineBubbles else cleaned.split(Regex("(?<=[.!?])\\s+"))
+        return source
+            .map { it.cleanupMessageBubble() }
+            .filter { it.isNotBlank() }
+            .filterNot { it.isSchemaNoise() }
+            .take(2)
     }
 
     private fun String.cleanupModelText(): String =
