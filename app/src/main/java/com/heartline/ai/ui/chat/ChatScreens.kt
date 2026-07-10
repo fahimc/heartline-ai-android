@@ -6,17 +6,24 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imeNestedScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +53,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -163,7 +172,7 @@ private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ChatThreadScreen(
     viewModel: ChatThreadViewModel,
@@ -173,6 +182,17 @@ fun ChatThreadScreen(
     val state by viewModel.uiState.collectAsState()
     val input by viewModel.input.collectAsState()
     val persona = state.persona
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+    val imeBottom = WindowInsets.ime.getBottom(density)
+    val itemCount = 1 + state.messages.size + if (state.isTyping) 1 else 0
+
+    LaunchedEffect(itemCount, imeBottom) {
+        if (itemCount > 0) {
+            listState.animateScrollToItem(itemCount - 1)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -194,34 +214,42 @@ fun ChatThreadScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFFF7F1))
             )
-        },
-        bottomBar = {
-            MessageInput(
-                value = input,
-                onValueChange = { viewModel.input.value = it },
-                onSend = viewModel::send,
-                modifier = Modifier.imePadding()
-            )
         }
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xFFFFF7F1))
                 .padding(padding)
-                .padding(horizontal = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            reverseLayout = false
+                .consumeWindowInsets(padding)
+                .imePadding()
         ) {
-            item {
-                DateSeparator("Today")
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .imeNestedScroll()
+                    .padding(horizontal = 12.dp),
+                state = listState,
+                contentPadding = PaddingValues(top = 8.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    DateSeparator("Today")
+                }
+                items(state.messages, key = { it.id }) { message ->
+                    MessageBubble(message)
+                }
+                if (state.isTyping) {
+                    item { TypingDots() }
+                }
             }
-            items(state.messages, key = { it.id }) { message ->
-                MessageBubble(message)
-            }
-            if (state.isTyping) {
-                item { TypingDots() }
-            }
+            MessageInput(
+                value = input,
+                onValueChange = { viewModel.input.value = it },
+                onSend = viewModel::send,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
