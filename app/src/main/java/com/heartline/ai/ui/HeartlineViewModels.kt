@@ -172,15 +172,15 @@ class ChatThreadViewModel(
         viewModelScope.launch {
             val thread = container.chatRepository.getThread(threadId) ?: return@launch
             container.chatRepository.addUserMessage(thread, text)
-            isTyping.value = true
             var threadForMemoryExtraction: ChatThreadEntity? = null
             try {
-                delay(150)
                 val currentThread = container.chatRepository.getThread(threadId) ?: thread
                 val reply = container.aiRepository.generateReply(currentThread, text)
                 if (reply.messages.isEmpty()) {
                     error("Local chat generated an empty reply.")
                 }
+                isTyping.value = true
+                delay(350)
                 for (bubble in reply.messages.take(4)) {
                     delay(120)
                     container.chatRepository.addAiMessage(currentThread, bubble)

@@ -362,6 +362,9 @@ class AiRepository(
             .removePrefix("```json")
             .removePrefix("```")
             .removeSuffix("```")
+            .replace(Regex("(?is)<think>.*?</think>"), "")
+            .replace(Regex("(?is)^\\s*thinking\\s*[:\\-].*?(?:\\n\\s*answer\\s*[:\\-]|\\z)"), "")
+            .removePrefix("/no_think")
             .trim()
 }
 
