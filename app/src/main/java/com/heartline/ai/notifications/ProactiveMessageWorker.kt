@@ -1,95 +1,146 @@
 package com.heartline.ai.notifications
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.heartline.ai.ai.AssetLoadingState
-import com.heartline.ai.ai.BundledLlmModelProvider
-import com.heartline.ai.ai.ModelAssetManager
-import com.heartline.ai.ai.RoutineEngine
-import com.heartline.ai.data.local.AppDatabase
-import com.heartline.ai.domain.model.ProactiveMessageRequest
-import kotlinx.coroutines.flow.first
-import org.json.JSONObject
+import com.heartline.ai.HeartlineApplication
+import com.heartline.ai.data.local.entities.ChatThreadEntity
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 class ProactiveMessageWorker(
     appContext: Context,
     workerParams: WorkerParameters
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
-        val db = AppDatabase.get(applicationContext)
-        val user = db.userDao().getUser() ?: return Result.success()
-        if (user.notificationLevel == "Off" || QuietHoursManager().isQuietNow(user)) return Result.success()
-
-        val maxTotal = when (user.notificationLevel) {
-            "Light" -> 1
-            "Frequent" -> 5
-            else -> 3
+        val app = applicationContext as? HeartlineApplication ?: return Result.failure()
+        val container = app.container
+        val user = container.userRepository.getUser() ?: return Result.success()
+        if (user.notificationLevel == "Off" || QuietHoursManager().isQuietNow(user)) {
+            Log.d(TAG, "Skipping proactive check because notifications are off or quiet hours are active")
+            return Result.success()
         }
-        val threads = db.chatDao().observeThreads().first()
-            .filter { System.currentTimeMillis() - it.updatedAt > TimeUnit.HOURS.toMillis(2) }
-            .sortedByDescending { it.messageCount }
-            .take(maxTotal)
-        val modelAssets = ModelAssetManager(applicationContext)
-        if (modelAssets.state.value !is AssetLoadingState.Ready) return Result.success()
-        val provider = BundledLlmModelProvider(applicationContext, modelAssets)
-        val routine = RoutineEngine()
-        val notifier = NotificationHelper(applicationContext)
+        val forcedForDebug = inputData.getBoolean(FORCE_FOR_DEBUG_KEY, false)
+        val targetThreadId = inputData.getString(TARGET_THREAD_ID_KEY)
+        val newConnectionCheck = inputData.getBoolean(NEW_CONNECTION_KEY, false)
 
-        threads.forEach { thread ->
-            val persona = db.personaDao().getPersona(thread.personaId) ?: return@forEach
-            val mood = db.moodDao().getMood(persona.id)
-            val memories = db.memoryDao().getPinned(persona.id).take(3)
-            val raw = provider.generateProactiveMessage(
-                ProactiveMessageRequest(
-                    persona = persona,
-                    user = user,
-                    thread = thread,
-                    mood = mood,
-                    memories = memories,
-                    timeOfDay = routine.timeOfDay(),
-                    lastInteraction = "recently"
-                )
-            )
-            val message = raw.extractProactiveMessage() ?: return@forEach
-            val saved = com.heartline.ai.data.local.entities.MessageEntity(
-                id = java.util.UUID.randomUUID().toString(),
-                threadId = thread.id,
-                senderType = "AI",
-                content = message,
-                source = "PROACTIVE"
-            )
-            db.chatDao().insertMessage(saved)
-            db.chatDao().updateThread(
-                thread.copy(
-                    lastMessage = message,
-                    unreadCount = thread.unreadCount + 1,
-                    updatedAt = System.currentTimeMillis()
-                )
-            )
-            notifier.showMessage(thread.id, persona.name, message)
+        val now = System.currentTimeMillis()
+        val startOfDay = LocalDate.now()
+            .atStartOfDay(ZoneId.systemDefault())
+            .toInstant()
+            .toEpochMilli()
+        val limits = ProactiveLimits.forLevel(user.notificationLevel)
+        val chatDao = container.database.chatDao()
+        val totalToday = chatDao.countProactiveMessagesSince(startOfDay)
+        if (!forcedForDebug && totalToday >= limits.maxTotalPerDay) {
+            Log.d(TAG, "Skipping proactive check because the daily limit is reached")
+            return Result.success()
         }
-        return Result.success()
+        val latestProactive = chatDao.latestProactiveMessageAt() ?: 0L
+        if (!forcedForDebug && latestProactive > 0 && now - latestProactive < limits.minimumGlobalGapMillis) {
+            Log.d(TAG, "Skipping proactive check because the global gap is active")
+            return Result.success()
+        }
+
+        val candidates = container.chatRepository.getThreads().let { threads ->
+            targetThreadId?.let { target -> threads.filter { it.id == target } } ?: threads
+        }
+        val eligible = candidates.filter { thread ->
+            val idleLongEnough = now - thread.updatedAt >= limits.minimumIdleMillis
+            val connectionReady = newConnectionCheck && thread.messageCount == 0
+            (forcedForDebug || connectionReady || idleLongEnough) &&
+                (forcedForDebug ||
+                    chatDao.countProactiveMessagesForThreadSince(thread.id, startOfDay) < limits.maxPerPersonaPerDay)
+        }
+        if (eligible.isEmpty()) {
+            Log.d(TAG, "No connected persona is eligible for a proactive message yet")
+            return Result.success()
+        }
+
+        val guaranteedByIdle = eligible.any { now - it.updatedAt >= limits.maximumIdleBeforeGuaranteedMillis }
+        if (!forcedForDebug && !newConnectionCheck && !guaranteedByIdle && Random.nextDouble() > limits.chancePerCheck) {
+            Log.d(TAG, "Randomized proactive check deferred until a later window")
+            return Result.success()
+        }
+        val selected = targetThreadId?.let { eligible.firstOrNull() } ?: chooseThread(eligible, now)
+            ?: return Result.success()
+
+        return try {
+            val persona = container.personaRepository.getPersona(selected.personaId) ?: return Result.success()
+            val reply = container.aiRepository.generateProactiveReply(selected)
+            val message = reply.messages.firstOrNull()?.trim().orEmpty()
+            if (message.isBlank()) return Result.retry()
+            container.chatRepository.addAiMessage(selected, message, proactive = true)
+            container.notificationHelper.showMessage(selected.id, persona.name, message)
+            Log.i(TAG, "Delivered proactive message for thread ${selected.id}")
+            Result.success()
+        } catch (error: Throwable) {
+            Log.e(TAG, "Proactive message delivery failed", error)
+            Result.retry()
+        }
     }
 
-    private fun String.extractProactiveMessage(): String? {
-        val cleaned = cleanupModelText()
-        val json = runCatching {
-            val start = cleaned.indexOf('{')
-            val end = cleaned.lastIndexOf('}')
-            if (start == -1 || end <= start) null else JSONObject(cleaned.substring(start, end + 1))
-        }.getOrNull()
-        val fromMessages = json?.optJSONArray("messages")?.optString(0).orEmpty()
-        return (json?.optString("message")?.takeIf { it.isNotBlank() } ?: fromMessages.ifBlank { cleaned })
-            .cleanupModelText()
-            .takeIf { it.isNotBlank() && !it.trim().startsWith("{") }
+    private fun chooseThread(threads: List<ChatThreadEntity>, now: Long): ChatThreadEntity? {
+        if (threads.isEmpty()) return null
+        val weighted = threads.map { thread ->
+            val idleHours = TimeUnit.MILLISECONDS.toHours(now - thread.updatedAt).coerceAtMost(24)
+            val weight = 1 + thread.messageCount.coerceAtMost(30) + thread.affinityScore / 5 + idleHours.toInt()
+            thread to weight.coerceAtLeast(1)
+        }
+        val total = weighted.sumOf { it.second }
+        var ticket = Random.nextInt(total)
+        weighted.forEach { (thread, weight) ->
+            if (ticket < weight) return thread
+            ticket -= weight
+        }
+        return weighted.last().first
     }
 
-    private fun String.cleanupModelText(): String =
-        trim()
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
+    companion object {
+        const val TAG = "HeartlineAI"
+        const val FORCE_FOR_DEBUG_KEY = "force_for_debug"
+        const val TARGET_THREAD_ID_KEY = "target_thread_id"
+        const val NEW_CONNECTION_KEY = "new_connection"
+    }
+}
+
+data class ProactiveLimits(
+    val maxTotalPerDay: Int,
+    val maxPerPersonaPerDay: Int,
+    val minimumGlobalGapMillis: Long,
+    val minimumIdleMillis: Long,
+    val maximumIdleBeforeGuaranteedMillis: Long,
+    val chancePerCheck: Double
+) {
+    companion object {
+        fun forLevel(level: String): ProactiveLimits = when (level) {
+            "Light" -> ProactiveLimits(
+                maxTotalPerDay = 1,
+                maxPerPersonaPerDay = 1,
+                minimumGlobalGapMillis = TimeUnit.HOURS.toMillis(6),
+                minimumIdleMillis = TimeUnit.HOURS.toMillis(2),
+                maximumIdleBeforeGuaranteedMillis = TimeUnit.HOURS.toMillis(10),
+                chancePerCheck = 0.28
+            )
+            "Frequent" -> ProactiveLimits(
+                maxTotalPerDay = 5,
+                maxPerPersonaPerDay = 2,
+                minimumGlobalGapMillis = TimeUnit.MINUTES.toMillis(45),
+                minimumIdleMillis = TimeUnit.MINUTES.toMillis(20),
+                maximumIdleBeforeGuaranteedMillis = TimeUnit.MINUTES.toMillis(75),
+                chancePerCheck = 0.78
+            )
+            else -> ProactiveLimits(
+                maxTotalPerDay = 3,
+                maxPerPersonaPerDay = 1,
+                minimumGlobalGapMillis = TimeUnit.HOURS.toMillis(2),
+                minimumIdleMillis = TimeUnit.MINUTES.toMillis(45),
+                maximumIdleBeforeGuaranteedMillis = TimeUnit.HOURS.toMillis(3),
+                chancePerCheck = 0.55
+            )
+        }
+    }
 }

@@ -51,6 +51,9 @@ class NotificationHelper(private val context: Context) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setWhen(System.currentTimeMillis())
             .build()
 
         NotificationManagerCompat.from(context).notify(threadId.hashCode(), notification)

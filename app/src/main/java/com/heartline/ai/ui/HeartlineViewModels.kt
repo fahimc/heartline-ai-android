@@ -11,7 +11,10 @@ import com.heartline.ai.data.local.entities.MessageEntity
 import com.heartline.ai.data.local.entities.PersonaProfileEntity
 import com.heartline.ai.data.repository.AppSettings
 import com.heartline.ai.domain.model.ChatRow
+import com.heartline.ai.domain.model.AiReply
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +38,11 @@ class OnboardingViewModel(private val container: AppContainer) : ViewModel() {
                 quietStart.value,
                 quietEnd.value
             )
-            container.proactiveMessageScheduler.schedule()
+            if (notificationLevel.value == "Off") {
+                container.proactiveMessageScheduler.cancel()
+            } else {
+                container.proactiveMessageScheduler.schedule()
+            }
         }
     }
 }
@@ -94,6 +101,7 @@ class DiscoverViewModel(private val container: AppContainer) : ViewModel() {
     fun connect(persona: PersonaProfileEntity) {
         viewModelScope.launch {
             val thread = container.chatRepository.connectPersona(persona.id)
+            container.proactiveMessageScheduler.scheduleAfterConnection(thread.id)
             connectedThread.value = thread
             index.value += 1
         }
@@ -119,6 +127,7 @@ class PersonaProfileViewModel(private val container: AppContainer) : ViewModel()
         val personaId = selectedPersona.value?.id ?: return
         viewModelScope.launch {
             val thread = container.chatRepository.connectPersona(personaId)
+            container.proactiveMessageScheduler.scheduleAfterConnection(thread.id)
             onConnected(thread.id)
         }
     }
@@ -138,6 +147,7 @@ class ChatThreadViewModel(
 ) : ViewModel() {
     private val isTyping = MutableStateFlow(false)
     private val personaState = MutableStateFlow<PersonaProfileEntity?>(null)
+    private val pendingMessages = Channel<String>(Channel.UNLIMITED)
 
     val input = MutableStateFlow("")
 
@@ -163,55 +173,124 @@ class ChatThreadViewModel(
                 personaState.value = container.personaRepository.getPersona(thread.personaId)
             }
         }
+        viewModelScope.launch {
+            container.chatRepository.observeThread(threadId).collect { thread ->
+                if ((thread?.unreadCount ?: 0) > 0) container.chatRepository.markRead(threadId)
+            }
+        }
+        viewModelScope.launch {
+            for (message in pendingMessages) {
+                try {
+                    processMessage(message)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    Log.e("HeartlineAI", "Unexpected chat delivery failure", error)
+                    recoverFailedTurn(message)
+                }
+            }
+        }
     }
 
     fun send() {
         val text = input.value.trim()
         if (text.isBlank()) return
         input.value = ""
-        viewModelScope.launch {
-            val thread = container.chatRepository.getThread(threadId) ?: return@launch
-            container.chatRepository.addUserMessage(thread, text)
-            var threadForMemoryExtraction: ChatThreadEntity? = null
-            try {
-                val currentThread = container.chatRepository.getThread(threadId) ?: thread
-                val reply = container.aiRepository.generateReply(currentThread, text)
-                if (reply.messages.isEmpty()) {
-                    error("Local chat generated an empty reply.")
+        val queued = pendingMessages.trySend(text)
+        if (queued.isFailure) {
+            input.value = text
+            Log.e("HeartlineAI", "Could not queue outgoing message", queued.exceptionOrNull())
+        }
+    }
+
+    private suspend fun processMessage(text: String) {
+        val thread = container.chatRepository.getThread(threadId) ?: return
+        container.chatRepository.addUserMessage(thread, text)
+        val currentThread = container.chatRepository.getThread(threadId) ?: thread
+        val reply = try {
+            container.aiRepository.generateReply(currentThread, text)
+        } catch (firstError: Throwable) {
+            Log.w("HeartlineAI", "Chat turn failed once; retrying", firstError)
+            delay(200)
+            runCatching { container.aiRepository.generateReply(currentThread, text) }
+                .getOrElse { error ->
+                    Log.e("HeartlineAI", "Chat turn failed after retry", error)
+                    AiReply(
+                        messages = listOf(recoveryReply(text)),
+                        mood = "curious",
+                        memoryCandidates = emptyList()
+                    )
                 }
-                isTyping.value = true
-                delay(350)
-                for (bubble in reply.messages.take(4)) {
-                    delay(120)
-                    container.chatRepository.addAiMessage(currentThread, bubble)
-                }
-                if (reply.memoryCandidates.isNotEmpty()) {
-                    container.memoryRepository.saveMemoryCandidates(thread.personaId, reply.memoryCandidates)
-                }
-                if (currentThread.messageCount > 0 && currentThread.messageCount % 8 == 0) {
-                    threadForMemoryExtraction = currentThread
-                }
-            } catch (error: Throwable) {
-                Log.e("HeartlineAI", "Asset-loaded LLM reply failed", error)
-                container.chatRepository.addAiMessage(
-                    thread,
-                    "I could not finish setting up chat on this device. Please reopen Heartline and let Asset Loading complete again."
-                )
-            } finally {
-                isTyping.value = false
+        }
+
+        isTyping.value = true
+        try {
+            val firstDelay = (280L + reply.messages.firstOrNull().orEmpty().length * 7L).coerceAtMost(850L)
+            delay(firstDelay)
+            reply.messages.take(3).forEachIndexed { index, bubble ->
+                if (index > 0) delay((180L + bubble.length * 5L).coerceAtMost(620L))
+                container.chatRepository.addAiMessage(currentThread, bubble)
             }
-            threadForMemoryExtraction?.let { extractionThread ->
-                viewModelScope.launch {
-                    runCatching {
-                        val recent = container.chatRepository.getRecentMessages(threadId, 12)
-                        if (recent.size >= 8) {
-                            container.aiRepository.extractMemories(extractionThread.personaId, recent)
-                        }
-                    }.onFailure { error ->
-                        Log.w("HeartlineAI", "Asset-loaded LLM memory extraction failed", error)
-                    }
+        } finally {
+            isTyping.value = false
+        }
+
+        if (reply.memoryCandidates.isNotEmpty()) {
+            container.memoryRepository.saveMemoryCandidates(thread.personaId, reply.memoryCandidates)
+        }
+        if (currentThread.messageCount > 0 && currentThread.messageCount % 8 == 0) {
+            viewModelScope.launch {
+                runCatching {
+                    val recent = container.chatRepository.getRecentMessages(threadId, 20)
+                    container.aiRepository.extractMemories(currentThread.personaId, recent)
+                }.onFailure { error ->
+                    Log.w("HeartlineAI", "Memory extraction failed", error)
                 }
             }
+        }
+        if (currentThread.messageCount > 0 && currentThread.messageCount % 10 == 0) {
+            viewModelScope.launch {
+                runCatching { container.aiRepository.refreshConversationSummary(threadId) }
+                    .onFailure { error -> Log.w("HeartlineAI", "Conversation summary failed", error) }
+            }
+        }
+    }
+
+    private suspend fun recoverFailedTurn(text: String) {
+        isTyping.value = false
+        val thread = container.chatRepository.getThread(threadId) ?: return
+        val latest = container.chatRepository.getRecentMessages(threadId, 1).lastOrNull()
+        if (latest?.senderType == "AI") return
+
+        if (latest?.senderType != "USER" || latest.content != text) {
+            runCatching { container.chatRepository.addUserMessage(thread, text) }
+                .onFailure { Log.e("HeartlineAI", "Could not recover outgoing message", it) }
+        }
+
+        isTyping.value = true
+        try {
+            delay(320)
+            val refreshedThread = container.chatRepository.getThread(threadId) ?: thread
+            container.chatRepository.addAiMessage(refreshedThread, recoveryReply(text))
+        } catch (error: Throwable) {
+            Log.e("HeartlineAI", "Could not persist recovered reply", error)
+        } finally {
+            isTyping.value = false
+        }
+    }
+
+    private fun recoveryReply(message: String): String {
+        val text = message.lowercase()
+        return when {
+            Regex("\\bat work\\b|\\bworking\\b|\\bshift\\b").containsMatchIn(text) ->
+                "I hope work goes smoothly today. Is it busy, or are you getting a quiet moment?"
+            Regex("\\btired\\b|\\bexhausted\\b|\\bdrained\\b").containsMatchIn(text) ->
+                "That sounds exhausting. What took the most out of you today?"
+            Regex("\\band you\\b|how are you|how about you").containsMatchIn(text) ->
+                "I am good. I have been getting on with my day and was hoping we would talk. How is yours going?"
+            Regex("^(hi|hey|hello|hiya)\\b").containsMatchIn(text) ->
+                "Hey, you. I am here. How is your day treating you?"
+            else -> "I am here with you. Tell me a little more about that."
         }
     }
 
@@ -249,6 +328,14 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun updateAi(provider: String, length: String, memory: String) {
         viewModelScope.launch { container.userRepository.updateAiSettings(provider, length, memory) }
+    }
+
+    fun updateNotifications(level: String) {
+        viewModelScope.launch {
+            container.userRepository.updateNotificationLevel(level)
+            if (level == "Off") container.proactiveMessageScheduler.cancel()
+            else container.proactiveMessageScheduler.schedule()
+        }
     }
 
     fun updateAppearance(theme: String, wallpaper: String, bubble: String) {

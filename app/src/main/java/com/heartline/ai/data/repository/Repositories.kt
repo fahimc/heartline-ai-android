@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlin.math.max
 
 class UserRepository(
     private val userDao: UserDao,
@@ -56,6 +57,9 @@ class UserRepository(
     }
 
     suspend fun getUser(): UserProfileEntity? = userDao.getUser()
+    suspend fun updateNotificationLevel(level: String) {
+        userDao.getUser()?.let { userDao.upsert(it.copy(notificationLevel = level)) }
+    }
     suspend fun updateAiSettings(provider: String, length: String, memory: String) =
         settingsStore.updateAiSettings(provider, length, memory)
     suspend fun updateAppearance(theme: String, wallpaper: String, bubble: String) =
@@ -75,6 +79,31 @@ class PersonaRepository(private val personaDao: PersonaDao, private val moodDao:
 
     suspend fun getPersona(id: String): PersonaProfileEntity? = personaDao.getPersona(id)
     suspend fun getMood(personaId: String) = moodDao.getMood(personaId)
+
+    suspend fun updateMood(personaId: String, mood: String, affinity: Int, proactive: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val current = moodDao.getMood(personaId)
+        moodDao.upsert(
+            (current ?: com.heartline.ai.data.local.entities.PersonaMoodStateEntity(
+                personaId = personaId,
+                mood = mood,
+                energyLevel = 60,
+                affectionLevel = 10,
+                lastInteractionAt = now
+            )).copy(
+                mood = mood,
+                energyLevel = when (mood) {
+                    "sleepy" -> 32
+                    "happy", "playful", "flirty" -> 76
+                    "concerned" -> 48
+                    else -> 60
+                },
+                affectionLevel = max(current?.affectionLevel ?: 10, affinity.coerceIn(0, 100)),
+                lastInteractionAt = now,
+                lastProactiveMessageAt = if (proactive) now else current?.lastProactiveMessageAt ?: 0L
+            )
+        )
+    }
 }
 
 class ChatRepository(
@@ -101,6 +130,7 @@ class ChatRepository(
     fun observeThread(threadId: String) = chatDao.observeThread(threadId)
     fun observeMessages(threadId: String) = chatDao.observeMessages(threadId)
     suspend fun getThread(threadId: String) = chatDao.getThread(threadId)
+    suspend fun getThreads() = chatDao.getThreads()
     suspend fun getRecentMessages(threadId: String, limit: Int = 16) = chatDao.getRecentMessages(threadId, limit).reversed()
     suspend fun markRead(threadId: String) = chatDao.markRead(threadId)
 
@@ -139,7 +169,12 @@ class ChatRepository(
         return message
     }
 
-    suspend fun clearThread(threadId: String) = chatDao.clearMessages(threadId)
+    suspend fun clearThread(threadId: String) {
+        chatDao.clearMessages(threadId)
+        chatDao.getThread(threadId)?.let {
+            chatDao.updateThread(it.copy(lastMessage = "", unreadCount = 0, updatedAt = System.currentTimeMillis()))
+        }
+    }
 }
 
 class MemoryRepository(
@@ -152,8 +187,13 @@ class MemoryRepository(
     suspend fun getPinnedMemories(personaId: String): List<MemoryEntity> = memoryDao.getPinned(personaId)
 
     suspend fun searchRelevantMemories(personaId: String, query: String, limit: Int): List<MemoryEntity> {
-        val direct = memoryDao.search(personaId, query, limit * 2)
-        return direct.sortedByDescending { retriever.score(it, query) }.take(limit).also { memories ->
+        val tokens = query.lowercase().split(Regex("[^a-z0-9]+"))
+            .filter { it.length > 2 }
+            .toSet()
+        val candidates = memoryDao.search(personaId, "", 200).filter { memory ->
+            memory.isPinned || tokens.any { token -> token in memory.content.lowercase() }
+        }
+        return candidates.sortedByDescending { retriever.score(it, query) }.take(limit).also { memories ->
             memories.forEach { memoryDao.updateUse(it.id, System.currentTimeMillis()) }
         }
     }
@@ -162,10 +202,22 @@ class MemoryRepository(
         summaryDao.getLatest(threadId)
 
     suspend fun saveMemoryCandidates(personaId: String, candidates: List<MemoryCandidate>) {
-        val existing = memoryDao.search(personaId, "", 200).map { it.content }
-        extractor.mergeDuplicates(existing, candidates).forEach { candidate ->
-            memoryDao.upsert(
-                MemoryEntity(
+        val existing = memoryDao.search(personaId, "", 200)
+        val now = System.currentTimeMillis()
+        candidates.forEach { candidate ->
+            val normalized = candidate.content.normalizeMemory()
+            val duplicate = existing.firstOrNull { it.content.normalizeMemory() == normalized }
+            if (duplicate != null) {
+                memoryDao.upsert(
+                    duplicate.copy(
+                        importance = max(duplicate.importance, candidate.importance).plus(1).coerceAtMost(10),
+                        confidence = max(duplicate.confidence, candidate.confidence),
+                        updatedAt = now,
+                        isSensitive = duplicate.isSensitive || candidate.isSensitive
+                    )
+                )
+            } else {
+                memoryDao.upsert(MemoryEntity(
                     id = UUID.randomUUID().toString(),
                     personaId = personaId,
                     userId = "local-user",
@@ -174,10 +226,25 @@ class MemoryRepository(
                     importance = candidate.importance.coerceIn(1, 10),
                     confidence = candidate.confidence,
                     embeddingText = candidate.content,
-                    isSensitive = candidate.isSensitive
-                )
-            )
+                    isSensitive = candidate.isSensitive,
+                    createdAt = now,
+                    updatedAt = now
+                ))
+            }
         }
+    }
+
+    suspend fun saveConversationSummary(threadId: String, summary: com.heartline.ai.domain.model.ConversationSummary) {
+        if (summary.summary.isBlank()) return
+        summaryDao.upsert(
+            ConversationSummaryEntity(
+                id = UUID.randomUUID().toString(),
+                threadId = threadId,
+                summary = summary.summary,
+                startMessageId = summary.startMessageId,
+                endMessageId = summary.endMessageId
+            )
+        )
     }
 
     suspend fun updateMemoryUse(memoryId: String) = memoryDao.updateUse(memoryId, System.currentTimeMillis())
@@ -185,6 +252,11 @@ class MemoryRepository(
     suspend fun deleteMemory(memoryId: String) = memoryDao.delete(memoryId)
     suspend fun clearAllMemories() = memoryDao.clearAll()
     suspend fun decayOldMemories() = Unit
+
+    private fun String.normalizeMemory(): String = lowercase()
+        .replace(Regex("[^a-z0-9 ]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 }
 
 class AiRepository(
@@ -203,17 +275,51 @@ class AiRepository(
             user = userRepository.getUser(),
             thread = thread,
             mood = personaRepository.getMood(persona.id),
-            memories = memories.distinctBy { it.id }.take(3),
-            recentMessages = chatRepository.getRecentMessages(thread.id, 8),
+            memories = memories.distinctBy { it.id }.take(6),
+            recentMessages = chatRepository.getRecentMessages(thread.id, 20),
+            conversationSummary = memoryRepository.getRecentConversationSummary(thread.id)?.summary.orEmpty(),
             message = userMessage
         )
         var raw = ""
         provider.generateReply(request).collect { raw += it }
-        return parseReply(raw)
+        return parseReply(raw).also { reply ->
+            personaRepository.updateMood(persona.id, reply.mood, thread.affinityScore)
+        }
+    }
+
+    suspend fun generateProactiveReply(thread: ChatThreadEntity): AiReply {
+        val persona = personaRepository.getPersona(thread.personaId) ?: error("Missing persona")
+        val summary = memoryRepository.getRecentConversationSummary(thread.id)?.summary.orEmpty()
+        val memories = memoryRepository.getPinnedMemories(persona.id) +
+            memoryRepository.searchRelevantMemories(persona.id, thread.lastMessage, 4)
+        val recentMessages = chatRepository.getRecentMessages(thread.id, 20)
+        val routine = com.heartline.ai.ai.RoutineEngine()
+        val raw = provider.generateProactiveMessage(
+            com.heartline.ai.domain.model.ProactiveMessageRequest(
+                persona = persona,
+                user = userRepository.getUser(),
+                thread = thread,
+                mood = personaRepository.getMood(persona.id),
+                memories = memories.distinctBy { it.id }.take(6),
+                timeOfDay = routine.timeOfDay(),
+                lastInteraction = thread.updatedAt.toString(),
+                recentMessages = recentMessages,
+                conversationSummary = summary
+            )
+        )
+        return parseReply(raw).also { reply ->
+            personaRepository.updateMood(persona.id, reply.mood, thread.affinityScore, proactive = true)
+        }
     }
 
     suspend fun extractMemories(personaId: String, messages: List<MessageEntity>) {
         memoryRepository.saveMemoryCandidates(personaId, provider.extractMemories(messages))
+    }
+
+    suspend fun refreshConversationSummary(threadId: String) {
+        val messages = chatRepository.getRecentMessages(threadId, 48)
+        if (messages.size < 12) return
+        memoryRepository.saveConversationSummary(threadId, provider.summarizeConversation(messages))
     }
 
     private fun parseReply(raw: String): AiReply {
@@ -223,9 +329,8 @@ class AiRepository(
             .mapNotNull { it.cleanupMessageBubble().takeIf(String::isNotBlank) }
             .filterNot { it.isSchemaNoise() }
             .take(3)
-            .ifEmpty {
-                cleaned.plainTextBubbles()
-            }
+            .ifEmpty { cleaned.plainTextBubbles() }
+            .ifEmpty { listOf("I lost my train of thought for a second. Tell me that again?") }
         val candidatesJson = json?.optJSONArray("memory_candidates")
         val candidates = if (candidatesJson == null) {
             emptyList()
@@ -235,7 +340,9 @@ class AiRepository(
                 MemoryCandidate(
                     type = item.optString("type", "fact"),
                     content = item.optString("content"),
-                    importance = item.optInt("importance", 5)
+                    importance = item.optInt("importance", 5),
+                    confidence = item.optDouble("confidence", 0.8).toFloat(),
+                    isSensitive = item.optBoolean("isSensitive", false)
                 )
             }.filter { it.content.isNotBlank() }
         }
@@ -380,6 +487,7 @@ class NotificationRepository(
     private val notificationHelper: NotificationHelper
 ) {
     fun scheduleProactiveMessages() = scheduler.schedule()
+    fun cancelProactiveMessages() = scheduler.cancel()
 
     fun showCompanionMessage(threadId: String, personaName: String, message: String) {
         notificationHelper.showMessage(threadId, personaName, message)

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -112,6 +111,13 @@ fun DiscoverScreen(
                 val persona = state.currentPersona
                 if (persona == null) {
                     EmptyComingSoon(onRefresh = { viewModel.rewind() })
+                    FloatingChatsButton(
+                        unread = state.unreadCount,
+                        onClick = onChats,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 18.dp, bottom = 18.dp)
+                    )
                 } else {
                     Column(
                         Modifier
@@ -136,16 +142,19 @@ fun DiscoverScreen(
                             onConnect = { viewModel.connect(persona) },
                             onSuper = { viewModel.connect(persona) }
                         )
-                        Spacer(Modifier.height(70.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(58.dp)
+                        ) {
+                            FloatingChatsButton(
+                                unread = state.unreadCount,
+                                onClick = onChats,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
+                        }
                     }
                 }
-                FloatingChatsButton(
-                    unread = state.unreadCount,
-                    onClick = onChats,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 18.dp, bottom = 88.dp)
-                )
             }
         }
     }

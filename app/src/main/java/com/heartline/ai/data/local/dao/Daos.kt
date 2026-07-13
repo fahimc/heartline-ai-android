@@ -49,6 +49,9 @@ interface ChatDao {
     @Query("SELECT * FROM chat_threads ORDER BY updatedAt DESC")
     fun observeThreads(): Flow<List<ChatThreadEntity>>
 
+    @Query("SELECT * FROM chat_threads ORDER BY updatedAt DESC")
+    suspend fun getThreads(): List<ChatThreadEntity>
+
     @Query("SELECT * FROM chat_threads WHERE id = :threadId LIMIT 1")
     fun observeThread(threadId: String): Flow<ChatThreadEntity?>
 
@@ -78,6 +81,15 @@ interface ChatDao {
 
     @Query("DELETE FROM messages WHERE threadId = :threadId")
     suspend fun clearMessages(threadId: String)
+
+    @Query("SELECT COUNT(*) FROM messages WHERE source = 'PROACTIVE' AND createdAt >= :since")
+    suspend fun countProactiveMessagesSince(since: Long): Int
+
+    @Query("SELECT COUNT(*) FROM messages WHERE threadId = :threadId AND source = 'PROACTIVE' AND createdAt >= :since")
+    suspend fun countProactiveMessagesForThreadSince(threadId: String, since: Long): Int
+
+    @Query("SELECT MAX(createdAt) FROM messages WHERE source = 'PROACTIVE'")
+    suspend fun latestProactiveMessageAt(): Long?
 }
 
 @Dao

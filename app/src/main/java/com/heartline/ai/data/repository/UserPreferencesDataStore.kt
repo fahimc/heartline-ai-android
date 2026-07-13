@@ -12,7 +12,7 @@ private val Context.userSettings by preferencesDataStore(name = "heartline_setti
 
 data class AppSettings(
     val onboardingComplete: Boolean = false,
-    val aiProvider: String = "Bundled on-device LLM",
+    val aiProvider: String = "Bundled SmolLM2",
     val responseLength: String = "Normal",
     val memoryRetrieval: String = "Basic",
     val theme: String = "System",
@@ -34,7 +34,7 @@ class UserPreferencesDataStore(private val context: Context) {
     val settings: Flow<AppSettings> = context.userSettings.data.map { prefs ->
         AppSettings(
             onboardingComplete = prefs[Keys.onboardingComplete] ?: false,
-            aiProvider = prefs[Keys.aiProvider] ?: "Bundled on-device LLM",
+            aiProvider = prefs[Keys.aiProvider] ?: "Bundled SmolLM2",
             responseLength = prefs[Keys.responseLength] ?: "Normal",
             memoryRetrieval = prefs[Keys.memoryRetrieval] ?: "Basic",
             theme = prefs[Keys.theme] ?: "System",

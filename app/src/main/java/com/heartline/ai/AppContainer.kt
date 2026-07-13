@@ -43,7 +43,9 @@ class AppContainer(context: Context) {
     val proactiveMessageScheduler = ProactiveMessageScheduler(appContext)
     val notificationRepository = NotificationRepository(proactiveMessageScheduler, notificationHelper)
 
-    suspend fun preloadAi() {
-        aiModelProvider.preload()
+    suspend fun prepareAi() {
+        if (aiModelProvider.supportsNativeInference()) {
+            aiModelProvider.preload()
+        }
     }
 }

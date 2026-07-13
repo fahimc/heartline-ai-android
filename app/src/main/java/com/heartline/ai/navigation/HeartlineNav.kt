@@ -26,12 +26,15 @@ import com.heartline.ai.ui.settings.SettingsScreen
 fun HeartlineNav(
     startDestination: String,
     openThreadId: String? = null,
+    openThreadEventId: Long? = null,
     navController: NavHostController = rememberNavController()
 ) {
     val container = (LocalContext.current.applicationContext as HeartlineApplication).container
     if (openThreadId != null) {
-        androidx.compose.runtime.LaunchedEffect(openThreadId) {
-            navController.navigate(Routes.chat(openThreadId))
+        androidx.compose.runtime.LaunchedEffect(openThreadId, openThreadEventId) {
+            navController.navigate(Routes.chat(openThreadId)) {
+                launchSingleTop = true
+            }
         }
     }
 

@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
@@ -30,6 +32,7 @@ class ModelAssetManager(context: Context) {
     private val partialFile = File(modelDir, "$MODEL_FILE_NAME.download")
     private val verifiedMarkerFile = File(modelDir, "$MODEL_FILE_NAME.sha256")
     private val _state = MutableStateFlow<AssetLoadingState>(AssetLoadingState.Checking)
+    private val preparationMutex = Mutex()
 
     val state: StateFlow<AssetLoadingState> = _state.asStateFlow()
 
@@ -38,35 +41,38 @@ class ModelAssetManager(context: Context) {
     }
 
     fun refresh() {
-        _state.value = if (isModelReady()) AssetLoadingState.Ready else AssetLoadingState.Missing
+        _state.value = if (hasVerifiedModel()) AssetLoadingState.Ready else AssetLoadingState.Missing
     }
 
-    fun getReadyModelFile(): File {
-        if (!isModelReady()) {
-            throw IllegalStateException("App assets are not ready. Complete Asset Loading before chatting.")
+    suspend fun ensureReadyModelFile(): File = preparationMutex.withLock {
+        withContext(Dispatchers.IO) {
+            if (hasVerifiedModel()) {
+                _state.value = AssetLoadingState.Ready
+                return@withContext modelFile
+            }
+
+            _state.value = AssetLoadingState.Downloading(0L, EXPECTED_MODEL_BYTES)
+            try {
+                modelDir.mkdirs()
+                removeStaleModels()
+                if (modelFile.length() != EXPECTED_MODEL_BYTES) {
+                    copyBundledAsset()
+                }
+                verifyModel()
+                partialFile.delete()
+                _state.value = AssetLoadingState.Ready
+                modelFile
+            } catch (error: Throwable) {
+                partialFile.delete()
+                verifiedMarkerFile.delete()
+                _state.value = AssetLoadingState.Failed(error.message ?: "Local chat preparation failed.")
+                throw error
+            }
         }
-        return modelFile
     }
 
-    suspend fun loadAsset() = withContext(Dispatchers.IO) {
-        if (isModelReady()) {
-            _state.value = AssetLoadingState.Ready
-            return@withContext
-        }
-        _state.value = AssetLoadingState.Downloading(0L, EXPECTED_MODEL_BYTES)
-
-        runCatching {
-            modelDir.mkdirs()
-            removeStaleModels()
-            copyBundledAsset()
-            verifyModel()
-            partialFile.delete()
-            _state.value = AssetLoadingState.Ready
-        }.onFailure { error ->
-            modelFile.delete()
-            partialFile.delete()
-            _state.value = AssetLoadingState.Failed(error.message ?: "Asset loading failed.")
-        }
+    suspend fun loadAsset() {
+        ensureReadyModelFile()
     }
 
     private fun copyBundledAsset() {
@@ -102,18 +108,10 @@ class ModelAssetManager(context: Context) {
         verifiedMarkerFile.writeText(EXPECTED_SHA256)
     }
 
-    private fun isModelReady(): Boolean =
+    private fun hasVerifiedModel(): Boolean =
         modelFile.exists() &&
             modelFile.length() == EXPECTED_MODEL_BYTES &&
-            if (verifiedMarkerFile.readTextOrNull()?.equals(EXPECTED_SHA256, ignoreCase = true) == true) {
-                true
-            } else {
-                runCatching {
-                    modelFile.sha256().equals(EXPECTED_SHA256, ignoreCase = true).also { verified ->
-                        if (verified) verifiedMarkerFile.writeText(EXPECTED_SHA256)
-                    }
-                }.getOrDefault(false)
-            }
+            verifiedMarkerFile.readTextOrNull()?.equals(EXPECTED_SHA256, ignoreCase = true) == true
 
     private fun removeStaleModels() {
         modelDir.listFiles { file ->

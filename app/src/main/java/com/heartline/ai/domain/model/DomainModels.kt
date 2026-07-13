@@ -14,6 +14,7 @@ data class AiChatRequest(
     val mood: PersonaMoodStateEntity?,
     val memories: List<MemoryEntity>,
     val recentMessages: List<MessageEntity>,
+    val conversationSummary: String,
     val message: String
 )
 
@@ -24,7 +25,9 @@ data class ProactiveMessageRequest(
     val mood: PersonaMoodStateEntity?,
     val memories: List<MemoryEntity>,
     val timeOfDay: String,
-    val lastInteraction: String
+    val lastInteraction: String,
+    val recentMessages: List<MessageEntity> = emptyList(),
+    val conversationSummary: String = ""
 )
 
 data class MemoryCandidate(

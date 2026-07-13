@@ -1,5 +1,9 @@
 package com.heartline.ai.ui.settings
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,7 +25,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,6 +42,9 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsState()
     val personas by viewModel.personas.collectAsState()
     val memories by viewModel.memories.collectAsState()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {}
     Scaffold(
         topBar = {
             TopAppBar(
@@ -60,12 +66,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 Text("Preferred tone: ${user?.preferredTone ?: "Supportive"}")
             }
             Section("Notifications") {
-                Text("Proactive messages: ${user?.notificationLevel ?: "Normal"}")
-                Text("Quiet hours: ${user?.quietHoursStart ?: "22:00"} to ${user?.quietHoursEnd ?: "07:00"}")
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Per-persona notification toggles")
-                    Switch(checked = true, onCheckedChange = {})
+                Text("Spontaneous messages")
+                ChipRow(listOf("Off", "Light", "Normal", "Frequent"), user?.notificationLevel ?: "Normal") {
+                    if (it != "Off" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    viewModel.updateNotifications(it)
                 }
+                Text("Quiet hours: ${user?.quietHoursStart ?: "22:00"} to ${user?.quietHoursEnd ?: "07:00"}")
             }
             Section("Privacy") {
                 Text("Memories are stored locally on this device.")
@@ -81,22 +89,21 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                             Text(memory.content, style = MaterialTheme.typography.bodyMedium)
                             Text(memory.type, style = MaterialTheme.typography.labelSmall)
                         }
-                        Switch(checked = memory.isPinned, onCheckedChange = { viewModel.pinMemory(memory.id, it) })
+                        androidx.compose.material3.Switch(checked = memory.isPinned, onCheckedChange = { viewModel.pinMemory(memory.id, it) })
                     }
                     Divider()
                 }
                 OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
             }
-            Section("App Assets") {
-                Text("Companion assets are stored locally on this device.")
-                Text("Bundled assets keep private on-device chat available after installation.")
+            Section("AI Engine") {
+                Text("SmolLM2 runs privately on this device and uses each chat's local history and memories.")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
-                    viewModel.updateAi("Asset-loaded on-device chat", it, settings.memoryRetrieval)
+                    viewModel.updateAi("Bundled SmolLM2", it, settings.memoryRetrieval)
                 }
                 Text("Memory retrieval")
                 ChipRow(listOf("Basic", "Strong", "Off"), settings.memoryRetrieval) {
-                    viewModel.updateAi("Asset-loaded on-device chat", settings.responseLength, it)
+                    viewModel.updateAi("Bundled SmolLM2", settings.responseLength, it)
                 }
             }
             Section("Appearance") {
