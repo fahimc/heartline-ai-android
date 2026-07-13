@@ -149,10 +149,13 @@ class ConversationDirector private constructor(
         appendLine("Conversation goal: ${turn.conversationGoal}")
         appendLine("Suggested shape: ${turn.pattern}")
         appendLine("High-quality starting line: ${turn.seed}")
-        appendLine("Rewrite that starting line so it sounds unmistakably like ${turn.personaName} and directly fits the chat.")
+        appendLine("The starting line is the ground truth. Rewrite it lightly; do not replace it with a different topic.")
+        appendLine("If the user asks what you said or what you are doing, answer from the recent chat and current activity.")
+        appendLine("If the user asks about your day, mention one natural fictional activity, then ask about theirs.")
+        appendLine("Rewrite the starting line so it sounds unmistakably like ${turn.personaName} and directly fits the chat.")
         appendLine("Return only 1 to 3 short message bubbles, one bubble per line, under 40 words total.")
         appendLine("Do not output analysis, JSON, labels, instructions, or quotes around the reply.")
-        appendLine("Do not repeat a recent line or quote the user back.")
+        appendLine("Do not quote the user back. Do not ask for clarification when recent chat already answers it.")
         appendLine("You may naturally mention your fictional job or current activity, but never claim physical presence with the user.")
         appendLine("Stay warm, specific, safe, and conversational. Do not use customer-support language.")
     }
@@ -163,18 +166,20 @@ class ConversationDirector private constructor(
             .trim()
         val generated = candidate.toBubbles()
             .filterNot { it.isInvalidModelOutput() }
+            .filterNot { it.isInvalidForTurn(turn) }
             .filter { it.wordCount() <= 30 }
             .take(3)
+        val repetitionAllowed = turn.intent == "ask_repeat_persona_activity"
         val generatedIsUsable = generated.isNotEmpty() &&
             generated.sumOf { it.wordCount() } <= 40 &&
-            !isRepetitive(generated, turn.recentChat)
+            (repetitionAllowed || !isRepetitive(generated, turn.recentChat))
         val finalBubbles = if (generatedIsUsable) {
             generated
         } else {
             (listOf(turn.seed) + turn.fallbackSeeds)
                 .asSequence()
                 .map { it.cleanupModelText().toBubbles() }
-                .firstOrNull { it.isNotEmpty() && !isRepetitive(it, turn.recentChat) }
+                .firstOrNull { it.isNotEmpty() && (repetitionAllowed || !isRepetitive(it, turn.recentChat)) }
                 ?: listOf("Tell me a little more - I want to understand.")
         }
         return ValidatedReply(
@@ -199,6 +204,7 @@ class ConversationDirector private constructor(
         return when {
             Regex("\\b(kill myself|suicide|end my life|hurt myself|self harm)\\b").containsMatchIn(value) -> "user_crisis"
             Regex("\\b(how are you|how about you|and you|what about you|you okay)\\b").containsMatchIn(value) -> "ask_persona_wellbeing"
+            Regex("\\b(what did you say|what were you doing|what was that you said|say you (are|were) doing|what did you mean).*(doing|day|work|job)?\\b").containsMatchIn(value) -> "ask_repeat_persona_activity"
             Regex("\\b(what are you doing|what you doing|what are you up to|what you up to|your day|how was your day)\\b").containsMatchIn(value) -> "ask_persona_day"
             Regex("\\b(what do you do|your job|where do you work|work do you do)\\b").containsMatchIn(value) -> "ask_persona_job"
             Regex("\\b(work|working|job|office|shift|at work|meeting)\\b").containsMatchIn(value) -> "user_at_work"
@@ -315,11 +321,15 @@ class ConversationDirector private constructor(
     }
 
     private fun String.isInvalidModelOutput(): Boolean =
-        contains(Regex("(?i)^(assistant|reply|message|output|answer|rewrite)\\s*[:\\-]")) ||
+            contains(Regex("(?i)^(assistant|reply|message|output|answer|rewrite)\\s*[:\\-]")) ||
             contains(Regex("(?i)\\b(json|selected seed|response pattern|system prompt|language model|as an ai)\\b")) ||
-            contains(Regex("(?i)\\b(you said|the part that stands out is|what happened with it today)\\b")) ||
+            contains(Regex("(?i)\\b(you said|the part that stands out is|what happened with it today|give me one more detail so i answer|good question\\.?)(\\b|$)")) ||
             contains("{") || contains("}") ||
             contains(Regex("(?i)\\b(I am physically there|I came over|I can actually visit)\\b"))
+
+    private fun String.isInvalidForTurn(turn: DirectedTurn): Boolean =
+        turn.intent == "ask_repeat_persona_activity" &&
+            contains(Regex("(?i)\\b(give me one more detail|which part|do you mean|i missed a step|good question)\\b"))
 
     private fun String.wordCount(): Int = split(Regex("\\s+")).count { it.isNotBlank() }
 

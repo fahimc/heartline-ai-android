@@ -31,6 +31,7 @@ class ConversationDirectorTest {
         assertEquals("user_at_work", director.detectIntent("good just at work"))
         assertEquals("ask_persona_wellbeing", director.detectIntent("good and you"))
         assertEquals("ask_persona_day", director.detectIntent("what are you up to?"))
+        assertEquals("ask_repeat_persona_activity", director.detectIntent("good. what did you say you are doing?"))
         assertEquals("user_tired", director.detectIntent("I am absolutely drained"))
         assertEquals("general_question", director.detectIntent("what"))
     }

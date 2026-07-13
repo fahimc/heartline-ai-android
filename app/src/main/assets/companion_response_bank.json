@@ -121,6 +121,18 @@
       ]
     },
     {
+      "intent": "ask_repeat_persona_activity",
+      "conversation_goal": "Answer what the persona just said she was doing, using recent chat and current activity instead of asking for clarification.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "I said I was {activity}. Basically a very me-shaped {time_of_day}. How is your day going?",
+        "I was talking about {activity}. Not glamorous, but very on-brand for me. What are you doing now?",
+        "I meant I am {activity}. My brain is half on that and half on this chat."
+      ]
+    },
+    {
       "intent": "ask_persona_job",
       "conversation_goal": "Explain the persona's fictional job in a natural, concise way.",
       "emotion": "happy",

@@ -9,11 +9,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val bundledSmolLmFileName = "SmolLM2_135M_Instruct.litertlm"
+val bundledSmolLmFileName = "SmolLM2_360M_instruct.litertlm"
 val bundledSmolLmAssetDir = layout.projectDirectory.dir("src/main/assets/models")
-val bundledSmolLmExpectedBytes = 142_819_328L
-val bundledSmolLmExpectedSha256 = "ccdc5c85735743f081b7d44ca309cab569f76c0f2f0e8e163449a63721969c37"
-val bundledSmolLmUrl = "https://huggingface.co/litert-community/SmolLM2-135M-Instruct/resolve/main/$bundledSmolLmFileName"
+val bundledSmolLmExpectedBytes = 373_719_040L
+val bundledSmolLmExpectedSha256 = "8e2834da211b439751af968ed650febdde5a8cb8d88bc6c1a3059f049caa5c2e"
+val bundledSmolLmUrl = "https://huggingface.co/litert-community/SmolLM2-360M-Instruct/resolve/main/$bundledSmolLmFileName"
 
 val downloadBundledSmolLm by tasks.registering {
     group = "heartline"
@@ -90,8 +90,8 @@ android {
         applicationId = "com.heartline.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.1.14"
+        versionCode = 16
+        versionName = "0.1.15"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
