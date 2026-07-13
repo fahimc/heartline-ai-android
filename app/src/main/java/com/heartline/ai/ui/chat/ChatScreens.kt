@@ -5,17 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imeNestedScroll
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -63,7 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -190,7 +187,7 @@ private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatThreadScreen(
     viewModel: ChatThreadViewModel,
@@ -201,11 +198,10 @@ fun ChatThreadScreen(
     val input by viewModel.input.collectAsState()
     val persona = state.persona
     val listState = rememberLazyListState()
-    val density = LocalDensity.current
-    val imeBottom = WindowInsets.ime.getBottom(density)
+    val focusManager = LocalFocusManager.current
     val itemCount = 1 + state.messages.size + if (state.isTyping) 1 else 0
 
-    LaunchedEffect(itemCount, imeBottom) {
+    LaunchedEffect(itemCount) {
         if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
     }
 
@@ -249,7 +245,16 @@ fun ChatThreadScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .imeNestedScroll()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.changes.any { it.pressed }) {
+                                    focusManager.clearFocus(force = true)
+                                }
+                            }
+                        }
+                    }
                     .padding(horizontal = 12.dp),
                 state = listState,
                 contentPadding = PaddingValues(top = 8.dp, bottom = 10.dp),

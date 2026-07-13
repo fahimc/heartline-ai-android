@@ -276,7 +276,7 @@ class AiRepository(
             thread = thread,
             mood = personaRepository.getMood(persona.id),
             memories = memories.distinctBy { it.id }.take(6),
-            recentMessages = chatRepository.getRecentMessages(thread.id, 20),
+            recentMessages = chatRepository.getRecentMessages(thread.id, 12),
             conversationSummary = memoryRepository.getRecentConversationSummary(thread.id)?.summary.orEmpty(),
             message = userMessage
         )
@@ -317,7 +317,7 @@ class AiRepository(
     }
 
     suspend fun refreshConversationSummary(threadId: String) {
-        val messages = chatRepository.getRecentMessages(threadId, 48)
+        val messages = chatRepository.getRecentMessages(threadId, 36)
         if (messages.size < 12) return
         memoryRepository.saveConversationSummary(threadId, provider.summarizeConversation(messages))
     }

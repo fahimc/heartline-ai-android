@@ -152,7 +152,7 @@ class BundledLlmModelProvider(
                 EngineConfig(
                     modelPath = model.absolutePath,
                     backend = Backend.CPU(threadCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)),
-                    maxNumTokens = 1024,
+                    maxNumTokens = 768,
                     cacheDir = cache.absolutePath
                 )
             ).also {
