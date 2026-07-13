@@ -44,7 +44,9 @@ data class ConversationSummary(
 data class AiReply(
     val messages: List<String>,
     val mood: String,
-    val memoryCandidates: List<MemoryCandidate>
+    val memoryCandidates: List<MemoryCandidate>,
+    val emotion: String = mood,
+    val animation: String = "soft_smile"
 )
 
 data class PersonaWithThread(

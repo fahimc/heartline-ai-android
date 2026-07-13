@@ -57,7 +57,7 @@ private fun HeartlineRoot(openThreadId: String?) {
     LaunchedEffect(assetLoadingState) {
         if (assetLoadingState is AssetLoadingState.Ready) {
             runCatching { app.container.preloadAi() }
-                .onFailure { Log.w("HeartlineAI", "Qwen preload failed", it) }
+                .onFailure { Log.w("HeartlineAI", "SmolLM2 preload failed", it) }
         }
     }
     val current = settings

@@ -137,9 +137,9 @@ class ModelAssetManager(context: Context) {
     private fun File.readTextOrNull(): String? = runCatching { readText().trim() }.getOrNull()
 
     companion object {
-        const val MODEL_FILE_NAME = "qwen35_mm_q8_ekv2048.litertlm"
+        const val MODEL_FILE_NAME = "SmolLM2_135M_Instruct.litertlm"
         const val MODEL_ASSET_DIR = "models"
-        const val EXPECTED_MODEL_BYTES = 1_159_757_824L
-        const val EXPECTED_SHA256 = "92999FE4A9242C983E99892D6E57F368E8CD7A4534BC9A383A9551155B7F70A5"
+        const val EXPECTED_MODEL_BYTES = 142_819_328L
+        const val EXPECTED_SHA256 = "ccdc5c85735743f081b7d44ca309cab569f76c0f2f0e8e163449a63721969c37"
     }
 }

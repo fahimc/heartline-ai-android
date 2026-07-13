@@ -239,7 +239,14 @@ class AiRepository(
                 )
             }.filter { it.content.isNotBlank() }
         }
-        return AiReply(messages = messages, mood = json?.optString("mood", "soft") ?: "curious", memoryCandidates = candidates)
+        val mood = json?.optString("mood", "soft") ?: "curious"
+        return AiReply(
+            messages = messages,
+            mood = mood,
+            emotion = json?.optString("emotion", mood) ?: mood,
+            animation = json?.optString("animation", "soft_smile") ?: "soft_smile",
+            memoryCandidates = candidates
+        )
     }
 
     private fun String.extractJsonObject(): JSONObject? = runCatching {

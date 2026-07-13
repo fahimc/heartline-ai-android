@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
+import java.security.MessageDigest
 
 plugins {
     id("com.android.application")
@@ -8,39 +9,40 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val bundledQwenFileName = "qwen35_mm_q8_ekv2048.litertlm"
-val bundledQwenAssetDir = layout.projectDirectory.dir("src/main/assets/models")
-val bundledQwenExpectedBytes = 1_159_757_824L
-val bundledQwenUrl = "https://huggingface.co/GabrieleConte/Qwen3.5-0.8B-LiteRT/resolve/main/$bundledQwenFileName"
+val bundledSmolLmFileName = "SmolLM2_135M_Instruct.litertlm"
+val bundledSmolLmAssetDir = layout.projectDirectory.dir("src/main/assets/models")
+val bundledSmolLmExpectedBytes = 142_819_328L
+val bundledSmolLmExpectedSha256 = "ccdc5c85735743f081b7d44ca309cab569f76c0f2f0e8e163449a63721969c37"
+val bundledSmolLmUrl = "https://huggingface.co/litert-community/SmolLM2-135M-Instruct/resolve/main/$bundledSmolLmFileName"
 
-val downloadBundledQwen by tasks.registering {
+val downloadBundledSmolLm by tasks.registering {
     group = "heartline"
-    description = "Downloads the Qwen3.5 0.8B LiteRT asset into the APK assets directory."
-    outputs.file(bundledQwenAssetDir.file(bundledQwenFileName))
+    description = "Downloads the SmolLM2 LiteRT asset into the APK assets directory."
+    outputs.file(bundledSmolLmAssetDir.file(bundledSmolLmFileName))
     outputs.upToDateWhen {
-        bundledQwenAssetDir.file(bundledQwenFileName).asFile.length() == bundledQwenExpectedBytes
+        bundledSmolLmAssetDir.file(bundledSmolLmFileName).asFile.length() == bundledSmolLmExpectedBytes
     }
 
     doLast {
-        val assetDir = bundledQwenAssetDir.asFile.apply { mkdirs() }
+        val assetDir = bundledSmolLmAssetDir.asFile.apply { mkdirs() }
         assetDir.listFiles { file ->
-            file.extension in setOf("litertlm", "llmpart", "download") && file.name != bundledQwenFileName
+            file.extension in setOf("litertlm", "llmpart", "download") && file.name != bundledSmolLmFileName
         }?.forEach { it.delete() }
 
-        val output = assetDir.resolve(bundledQwenFileName)
-        if (output.exists() && output.length() == bundledQwenExpectedBytes) {
-            logger.lifecycle("Bundled Qwen asset already present at ${output.absolutePath}")
+        val output = assetDir.resolve(bundledSmolLmFileName)
+        if (output.exists() && output.length() == bundledSmolLmExpectedBytes) {
+            logger.lifecycle("Bundled SmolLM2 asset already present at ${output.absolutePath}")
             return@doLast
         }
 
-        val partial = assetDir.resolve("$bundledQwenFileName.download")
+        val partial = assetDir.resolve("$bundledSmolLmFileName.download")
         output.delete()
         partial.delete()
 
-        logger.lifecycle("Downloading bundled Qwen app asset (${bundledQwenExpectedBytes / 1_000_000} MB): $bundledQwenUrl")
+        logger.lifecycle("Downloading bundled SmolLM2 app asset (${bundledSmolLmExpectedBytes / 1_000_000} MB): $bundledSmolLmUrl")
         var totalBytes = 0L
         try {
-            URI(bundledQwenUrl).toURL().openStream().buffered().use { input ->
+            URI(bundledSmolLmUrl).toURL().openStream().buffered().use { input ->
                 partial.outputStream().buffered().use { outputStream ->
                     val buffer = ByteArray(8 * 1024 * 1024)
                     while (true) {
@@ -56,12 +58,27 @@ val downloadBundledQwen by tasks.registering {
             throw error
         }
 
-        if (totalBytes != bundledQwenExpectedBytes || partial.length() != bundledQwenExpectedBytes) {
+        if (totalBytes != bundledSmolLmExpectedBytes || partial.length() != bundledSmolLmExpectedBytes) {
             val actualBytes = partial.length()
             partial.delete()
-            throw GradleException("Downloaded Qwen asset was $actualBytes bytes; expected $bundledQwenExpectedBytes bytes.")
+            throw GradleException("Downloaded SmolLM2 asset was $actualBytes bytes; expected $bundledSmolLmExpectedBytes bytes.")
         }
-        check(partial.renameTo(output)) { "Could not save bundled Qwen asset to ${output.absolutePath}" }
+        val actualSha256 = MessageDigest.getInstance("SHA-256").let { digest ->
+            partial.inputStream().buffered().use { input ->
+                val buffer = ByteArray(1024 * 1024)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            digest.digest().joinToString(separator = "") { "%02x".format(it) }
+        }
+        if (!actualSha256.equals(bundledSmolLmExpectedSha256, ignoreCase = true)) {
+            partial.delete()
+            throw GradleException("Downloaded SmolLM2 asset failed verification.")
+        }
+        check(partial.renameTo(output)) { "Could not save bundled SmolLM2 asset to ${output.absolutePath}" }
     }
 }
 
@@ -73,8 +90,8 @@ android {
         applicationId = "com.heartline.ai"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.1.11"
+        versionCode = 13
+        versionName = "0.1.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -113,7 +130,7 @@ kotlin {
 }
 
 tasks.named("preBuild") {
-    dependsOn(downloadBundledQwen)
+    dependsOn(downloadBundledSmolLm)
 }
 
 dependencies {

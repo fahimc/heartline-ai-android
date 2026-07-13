@@ -80,7 +80,10 @@ class ProactiveMessageWorker(
             val end = cleaned.lastIndexOf('}')
             if (start == -1 || end <= start) null else JSONObject(cleaned.substring(start, end + 1))
         }.getOrNull()
-        return (json?.optString("message") ?: cleaned).cleanupModelText().takeIf { it.isNotBlank() }
+        val fromMessages = json?.optJSONArray("messages")?.optString(0).orEmpty()
+        return (json?.optString("message")?.takeIf { it.isNotBlank() } ?: fromMessages.ifBlank { cleaned })
+            .cleanupModelText()
+            .takeIf { it.isNotBlank() && !it.trim().startsWith("{") }
     }
 
     private fun String.cleanupModelText(): String =

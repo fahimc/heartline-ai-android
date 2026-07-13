@@ -21,8 +21,6 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 
 class BundledLlmModelProvider(
@@ -30,24 +28,28 @@ class BundledLlmModelProvider(
     private val modelAssetManager: ModelAssetManager
 ) : AiModelProvider {
     private val appContext = context.applicationContext
+    private val director = ConversationDirector(appContext)
     private val engineMutex = Mutex()
     private var engine: Engine? = null
 
     override fun generateReply(request: AiChatRequest): Flow<String> = flow {
-        emit(generateText(PromptBuilder.chatPrompt(request), temperature = 0.58))
+        val turn = director.selectTurn(request)
+        val rewritten = generateText(director.rewritePrompt(turn), temperature = 0.42)
+        emit(director.validate(rewritten, turn).toJson())
     }.flowOn(Dispatchers.IO)
 
-    override suspend fun generateProactiveMessage(request: ProactiveMessageRequest): String =
-        generateText(PromptBuilder.proactivePrompt(request), temperature = 0.68)
+    override suspend fun generateProactiveMessage(request: ProactiveMessageRequest): String {
+        val turn = director.selectProactiveTurn(request)
+        val rewritten = generateText(director.rewritePrompt(turn), temperature = 0.5)
+        return director.validate(rewritten, turn).toJson()
+    }
 
     suspend fun preload() {
         getEngine()
     }
 
     override suspend fun extractMemories(conversation: List<MessageEntity>): List<MemoryCandidate> {
-        if (conversation.size < 4) return emptyList()
-        val raw = generateText(memoryExtractionPrompt(conversation), temperature = 0.2)
-        return parseMemoryCandidates(raw)
+        return director.extractMemoryCandidates(conversation)
     }
 
     override suspend fun summarizeConversation(conversation: List<MessageEntity>): ConversationSummary {
@@ -86,7 +88,7 @@ class BundledLlmModelProvider(
                 EngineConfig(
                     modelPath = model.absolutePath,
                     backend = Backend.CPU(threadCount = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)),
-                    maxNumTokens = 2048,
+                    maxNumTokens = 1024,
                     cacheDir = cache.absolutePath
                 )
             ).also {
@@ -104,17 +106,6 @@ class BundledLlmModelProvider(
             }
         }
 
-    private fun memoryExtractionPrompt(conversation: List<MessageEntity>): String = buildString {
-        appendLine("Extract only durable memories from this Heartline AI chat.")
-        appendLine("Do not invent facts. Ignore generic small talk.")
-        appendLine("Return only a JSON array. Each item must include type, content, importance, confidence, and isSensitive.")
-        appendLine("Valid types: preference, fact, event, relationship, boundary.")
-        appendLine()
-        conversation.takeLast(12).forEach { message ->
-            appendLine("${message.senderType}: ${message.content}")
-        }
-    }
-
     private fun summaryPrompt(conversation: List<MessageEntity>): String = buildString {
         appendLine("Summarize this chat for future continuity.")
         appendLine("Keep it factual, concise, and do not invent details.")
@@ -123,29 +114,6 @@ class BundledLlmModelProvider(
             appendLine("${message.senderType}: ${message.content}")
         }
     }
-
-    private fun parseMemoryCandidates(raw: String): List<MemoryCandidate> {
-        val array = raw.extractJsonArray() ?: return emptyList()
-        return (0 until array.length()).mapNotNull { index ->
-            val item = array.optJSONObject(index) ?: return@mapNotNull null
-            val content = item.optString("content").trim()
-            if (content.isBlank()) return@mapNotNull null
-            MemoryCandidate(
-                type = item.optString("type", "fact").ifBlank { "fact" },
-                content = content,
-                importance = item.optInt("importance", 5).coerceIn(1, 10),
-                confidence = item.optDouble("confidence", 0.8).toFloat().coerceIn(0f, 1f),
-                isSensitive = item.optBoolean("isSensitive", false)
-            )
-        }
-    }
-
-    private fun String.extractJsonArray(): JSONArray? = runCatching {
-        val cleaned = cleanupModelText()
-        val start = cleaned.indexOf('[')
-        val end = cleaned.lastIndexOf(']')
-        if (start == -1 || end <= start) null else JSONArray(cleaned.substring(start, end + 1))
-    }.getOrNull()
 
     private fun String.cleanupModelText(): String =
         trim()
