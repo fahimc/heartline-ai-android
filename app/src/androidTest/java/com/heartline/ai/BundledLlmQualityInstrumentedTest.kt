@@ -77,7 +77,14 @@ class BundledLlmQualityInstrumentedTest {
 
             assertTrue("Qwen returned no text for ${scenario.message}", provider.lastReplyDiagnostics.modelOutputReceived)
             assertTrue("Off-topic reply for ${scenario.message}: $text", scenario.expected.containsMatchIn(text))
-            assertFalse(text.contains(Regex("(?i)(good question|give me one more detail|json|system prompt|as an ai|what matters most)")))
+            assertFalse(
+                text.contains(
+                    Regex(
+                        "(?i)(good question|give me one more detail|json|system prompt|as an ai|what matters most|" +
+                            "mobile chat bubbles?|new connection,? new vibe|flirty,? direct|^\\s*\\d+[.)])"
+                    )
+                )
+            )
             assertTrue(text.split(Regex("\\s+")).size <= 45)
         }
     }

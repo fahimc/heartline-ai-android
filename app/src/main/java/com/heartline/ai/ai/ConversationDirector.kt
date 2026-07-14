@@ -129,14 +129,14 @@ class ConversationDirector private constructor(
 
     fun rewritePrompt(turn: DirectedTurn): String = buildString {
         appendLine("/no_think")
-        appendLine("Rewrite one prepared companion reply. Do not answer the conversation yourself.")
-        appendLine("Write as ${turn.personaName}: ${turn.personaStyle}")
-        appendLine("Mood: ${turn.mood}. Relationship: ${turn.relationshipStage}.")
-        appendLine("Prepared reply: ${turn.seed}")
+        appendLine("Copy-edit only the text enclosed by the reply tags.")
+        appendLine("<reply>")
+        appendLine(turn.seed)
+        appendLine("</reply>")
         appendLine("Keep the exact meaning, speaker perspective, names, topic, and concrete facts.")
-        appendLine("Do not add events, food, plans, actions, or questions that are not in the prepared reply.")
-        appendLine("Return only 1 to 3 short mobile-chat bubbles, one per line, under 40 words total.")
-        appendLine("No analysis, labels, JSON, quotes, role names, or thinking.")
+        appendLine("Do not add events, food, plans, actions, or questions that are not in the enclosed text.")
+        appendLine("Write naturally as ${turn.personaName}. Return only the final text in at most 3 short lines and 40 words.")
+        appendLine("Never print tags, instructions, descriptors, headings, numbering, labels, analysis, or thinking.")
     }
 
     fun validate(raw: String, turn: DirectedTurn): ValidatedReply {
@@ -146,6 +146,7 @@ class ConversationDirector private constructor(
         val generated = candidate.toBubbles()
             .filterNot { it.isInvalidModelOutput() }
             .filterNot { it.isInvalidForTurn(turn) }
+            .filter { it.isGroundedBubble(turn) }
             .filter { it.wordCount() <= 30 }
             .take(3)
         val repetitionAllowed = turn.intent == "ask_repeat_persona_activity"
@@ -463,6 +464,19 @@ class ConversationDirector private constructor(
         return (candidateWords intersect seedWords).size >= minimumOverlap
     }
 
+    private fun String.isGroundedBubble(turn: DirectedTurn): Boolean {
+        val bubbleSemanticWords = semanticWords()
+        val seedSemanticWords = turn.seed.semanticWords()
+        val semanticOverlap = (bubbleSemanticWords intersect seedSemanticWords).size
+        val literalOverlap = (normalizedWords() intersect turn.seed.normalizedWords()).size
+        val hasRequiredSignal = turn.requiredSignalGroups.any { group ->
+            val signals = signalWords()
+            group.map { it.canonicalMeaningWord() }.any(signals::contains)
+        }
+        val minimumLiteralOverlap = if (wordCount() <= 5) 1 else 2
+        return semanticOverlap >= 1 || literalOverlap >= minimumLiteralOverlap || hasRequiredSignal
+    }
+
     private fun String.cleanupModelText(): String = trim()
         .removePrefix("```json")
         .removePrefix("```text")
@@ -486,8 +500,9 @@ class ConversationDirector private constructor(
     }
 
     private fun String.isInvalidModelOutput(): Boolean =
-        contains(Regex("(?i)^(assistant|reply|message|output|answer|rewrite)\\s*[:\\-]")) ||
-            contains(Regex("(?i)\\b(json|selected seed|response pattern|system prompt|language model|as an ai)\\b")) ||
+        contains(Regex("(?i)^(assistant|reply|message|output|answer|rewrite|tone|style|mood|relationship|persona)\\s*[:\\-]")) ||
+            contains(Regex("(?i)^\\s*\\d{1,2}[.)]\\s*")) ||
+            contains(Regex("(?i)\\b(json|selected seed|prepared reply|response pattern|system prompt|language model|as an ai|mobile[- ]?chat bubbles?|message bubbles?)\\b")) ||
             contains(Regex("(?i)\\b(you said|the part that stands out is|what happened with it today|give me one more detail so i answer)\\b")) ||
             contains(Regex("(?i)(^|\\s)(good question\\.?|i get what you mean\\.?|i am following\\.?)($|\\s)")) ||
             contains(Regex("(?i)\\b(how do you feel about it|what is the part that matters most)\\b")) ||
@@ -495,7 +510,8 @@ class ConversationDirector private constructor(
             contains(Regex("(?i)\\b(I am physically there|I came over|I can actually visit)\\b"))
 
     private fun String.isInvalidForTurn(turn: DirectedTurn): Boolean =
-        (turn.intent == "ask_repeat_persona_activity" &&
+        isPromptMetadata(turn) ||
+            (turn.intent == "ask_repeat_persona_activity" &&
             contains(Regex("(?i)\\b(give me one more detail|which part|do you mean|i missed a step|good question)\\b"))) ||
             (turn.intent in setOf("user_finished_meal", "user_food") &&
                 contains(Regex("(?i)\\b(i had|i ate|my dinner|my lunch|my breakfast)\\b"))) ||
@@ -503,6 +519,21 @@ class ConversationDirector private constructor(
                 contains(Regex("(?i)\\b(i am|i'm|im) (tired|exhausted|drained)\\b"))) ||
             contains(Regex("(?i)\\b(hey|hi) ${Regex.escape(turn.personaName)}\\b")) ||
             contains(Regex("(?i)\\b${Regex.escape(turn.personaName)} (is|was|has|had|said|posted|works)\\b"))
+
+    private fun String.isPromptMetadata(turn: DirectedTurn): Boolean {
+        val normalized = trim()
+        if (turn.relationshipStage.isNotBlank() &&
+            normalized.contains(turn.relationshipStage, ignoreCase = true)
+        ) {
+            return true
+        }
+        val metadataWords = listOf(turn.personaStyle, turn.mood, turn.relationshipStage)
+            .joinToString(" ")
+            .semanticWords()
+        val words = semanticWords()
+        val seedOverlap = (words intersect turn.seed.semanticWords()).size
+        return (words intersect metadataWords).size >= 2 && seedOverlap < 2
+    }
 
     private fun String.wordCount(): Int = split(Regex("\\s+")).count { it.isNotBlank() }
 

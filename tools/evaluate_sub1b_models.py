@@ -131,10 +131,11 @@ def build_prompt(scenario: Scenario, mode: str) -> str:
     if mode == "rewrite":
         return (
             "/no_think\n"
-            f"You are {scenario.persona}. Rewrite only the prepared reply.\n"
-            f"Prepared reply: {scenario.prepared_reply}\n"
+            "Copy-edit only the text enclosed by the reply tags.\n"
+            f"<reply>\n{scenario.prepared_reply}\n</reply>\n"
             "Keep its exact topic, facts, and speaker perspective. Do not invent events. "
-            "Return only one short mobile-chat reply under 40 words."
+            f"Write naturally as {scenario.persona.split(',', 1)[0]}. "
+            "Return only the final text under 40 words without headings, numbering, labels, or instructions."
         )
     return (
         "/no_think\n"

@@ -24,6 +24,10 @@ reply in one pass.
 - Its adversarial matrix runs 8 personas x 8 scenarios x 10 hostile model
   outputs: 640 validated replies. A reply fails if it drops the required topic,
   accepts a generic answer, leaks model protocol, or invents the wrong speaker.
+- Screenshot regressions cover prompt metadata emitted as messages, including
+  persona-style descriptors, relationship-stage text, output headings, and
+  numbered bubble instructions. Every generated bubble must independently
+  overlap the grounded reply plan or an intent-specific signal.
 - `BundledLlmQualityInstrumentedTest` exercises the real bundled LiteRT model on
   arm64 Android. It is skipped on x86 emulators because LiteRT-LM inference in
   this app is arm64-only.

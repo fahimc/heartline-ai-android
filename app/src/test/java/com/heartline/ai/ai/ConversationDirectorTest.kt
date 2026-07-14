@@ -71,6 +71,55 @@ class ConversationDirectorTest {
     }
 
     @Test
+    fun screenshotStyleAndBubbleInstructionsNeverBecomeMessages() {
+        val chloe = PersonaSeedData.personas().first { it.id == "chloe" }
+        val baseRequest = request("good")
+        val turn = director.selectTurn(
+            baseRequest.copy(
+                persona = chloe,
+                thread = baseRequest.thread.copy(personaId = chloe.id)
+            )
+        ).copy(
+            seed = "Fair enough. I will take that answer for now.",
+            fallbackSeeds = listOf("Okay, noted. I am still curious, but I will behave.")
+        )
+        val raw = """
+            Flirty, direct. New connection. I take that.
+            Mobile chat bubbles:
+            1. "Fair enough.
+        """.trimIndent()
+
+        val reply = director.validate(raw, turn)
+        val joined = reply.messages.joinToString(" ")
+
+        assertFalse(reply.usedModelRewrite)
+        assertTrue(joined.contains(Regex("(?i)\\b(fair enough|okay,? noted)\\b")))
+        assertFalse(joined.contains(Regex("(?i)(flirty|new connection|mobile chat|bubbles?|^\\s*1[.)])")))
+    }
+
+    @Test
+    fun screenshotValidWorkLineCannotSmuggleMetadataBubbles() {
+        val chloe = PersonaSeedData.personas().first { it.id == "chloe" }
+        val baseRequest = request("yeah good, just at work")
+        val turn = director.selectTurn(
+            baseRequest.copy(
+                persona = chloe,
+                thread = baseRequest.thread.copy(personaId = chloe.id)
+            )
+        ).copy(seed = "I hope work is kind to you today. Is it busy or fairly calm?")
+        val raw = """
+            I hope work is kind to you today.
+            Flirty, direct, and supportive.
+            New connection, new vibe.
+        """.trimIndent()
+
+        val reply = director.validate(raw, turn)
+
+        assertEquals(listOf("I hope work is kind to you today."), reply.messages)
+        assertTrue(reply.usedModelRewrite)
+    }
+
+    @Test
     fun workReplyDoesNotQuoteUserBackAsTheMainResponse() {
         val turn = director.selectTurn(request("nothing im at work now"))
         val reply = director.validate("You said \"nothing im at work now\". What happened with it today?", turn)
@@ -93,7 +142,7 @@ class ConversationDirectorTest {
         assertEquals("ask_persona_day", turn.intent)
         assertTrue(turn.currentActivity.contains("cafe photos"))
         assertTrue(turn.conversationSummary.contains("Fred has a presentation"))
-        assertTrue(director.rewritePrompt(turn).contains("Prepared reply:"))
+        assertTrue(director.rewritePrompt(turn).contains("<reply>\n${turn.seed}\n</reply>"))
         assertTrue(director.rewritePrompt(turn).contains("/no_think"))
         assertFalse(director.rewritePrompt(turn).contains("Recent chat"))
         assertTrue(turn.seed.contains("cafe photos"))

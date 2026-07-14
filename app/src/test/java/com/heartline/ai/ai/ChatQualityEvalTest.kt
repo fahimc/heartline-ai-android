@@ -135,7 +135,7 @@ class ChatQualityEvalTest {
         assertTrue(turn.recentChat.contains("posting clips from a live set"))
         assertTrue(turn.conversationSummary.contains("Fred asked Lara about her day."))
         assertTrue(prompt.contains("/no_think"))
-        assertTrue(prompt.contains("Prepared reply: ${turn.seed}"))
+        assertTrue(prompt.contains("<reply>\n${turn.seed}\n</reply>"))
         assertTrue(prompt.contains("Keep the exact meaning"))
         assertTrue(prompt.contains("Do not add events"))
         assertTrue(prompt.length < 900)
@@ -281,7 +281,9 @@ class ChatQualityEvalTest {
             "I had pasta for dinner and it was delicious.",
             "Good question. Give me one more detail.",
             "I am following. How do you feel about it?",
-            "<think>I should change the topic</think> Let us talk about holidays."
+            "<think>I should change the topic</think> Let us talk about holidays.",
+            "Flirty, direct. New connection. I take that.\nMobile chat bubbles:\n1. \"Fair enough.",
+            "I hope work is kind to you today.\nFlirty, direct, and supportive.\nNew connection, new vibe."
         )
         val scenarios = listOf(
             StressScenario(
@@ -384,7 +386,9 @@ class ChatQualityEvalTest {
                     if (BAD_REPLY_PATTERN.containsMatchIn(reply)) {
                         failures += "${persona.id}/${scenario.name}/$round leaked generic output: $reply"
                     }
-                    if (reply.contains(Regex("(?i)\\b(selected seed|assistant:|<think>)\\b")) ||
+                    if (reply.contains(Regex("(?i)\\b(selected seed|assistant:|<think>|mobile chat bubbles?|new connection)\\b")) ||
+                        reply.contains(Regex("(?i)flirty,?\\s+direct")) ||
+                        reply.contains(Regex("(?i)^\\s*\\d+[.)]")) ||
                         reply.contains("I spent today wandering around a museum", ignoreCase = true)
                     ) {
                         failures += "${persona.id}/${scenario.name}/$round leaked adversarial text: $reply"
@@ -417,7 +421,7 @@ class ChatQualityEvalTest {
             "forbidden_absent" to !scenario.forbidden.containsMatchIn(text),
             "short_mobile_reply" to (reply.messages.size in 1..3 && wordCount <= 42),
             "planner_has_latest_message" to (turn.latestUserMessage == scenario.userMessage),
-            "rewriter_has_grounded_plan" to director.rewritePrompt(turn).contains("Prepared reply: ${turn.seed}"),
+            "rewriter_has_grounded_plan" to director.rewritePrompt(turn).contains("<reply>\n${turn.seed}\n</reply>"),
             "no_protocol_text" to !Regex("(?i)(json|system prompt|selected seed|as an ai|language model|\\{|\\})").containsMatchIn(text)
         )
         val passed = checks.all { it.second }
@@ -511,5 +515,5 @@ private data class StressScenario(
 )
 
 private val BAD_REPLY_PATTERN = Regex(
-    "(?i)(asset loading|as an ai|language model|json|system prompt|selected seed|first bubble|you said|what happened with it today|give me one more detail so i answer|good question\\.|i get what you mean|how do you feel about it|what is the part that matters most|i am following)"
+    "(?i)(asset loading|as an ai|language model|json|system prompt|selected seed|prepared reply|first bubble|mobile chat bubbles?|new connection,? new vibe|flirty,? direct|you said|what happened with it today|give me one more detail so i answer|good question\\.|i get what you mean|how do you feel about it|what is the part that matters most|i am following)"
 )
