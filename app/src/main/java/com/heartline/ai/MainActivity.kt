@@ -74,7 +74,7 @@ private fun HeartlineRoot(openThreadRequest: OpenThreadRequest?) {
     LaunchedEffect(Unit) {
         delay(2_000)
         runCatching { app.container.prepareAi() }
-            .onFailure { Log.w("HeartlineAI", "Silent SmolLM2 preparation failed; chat will retry", it) }
+            .onFailure { Log.w("HeartlineAI", "Silent Qwen3 preparation failed; chat will retry", it) }
     }
     val current = settings
     if (!splashComplete) {

@@ -76,6 +76,32 @@ class ChatQualityEvalTest {
                 summary = "Fred has a presentation after lunch and is a little nervous.",
                 expected = Regex("(?i)(coffee|newsletter|film|cafe|day|presentation)"),
                 forbidden = Regex("(?i)(give me one more detail|what happened with it)")
+            ),
+            EvalScenario(
+                name = "presence_check_returns_to_dinner_context",
+                personaId = "elise",
+                userMessage = "you there",
+                recent = listOf(
+                    aiMessage("How is your day treating you?"),
+                    userMessage("yeah not bad. just had dinner")
+                ),
+                rawModelOutput = "I get what you mean.\nHow do you feel about it, honestly?",
+                expected = Regex("(?i)(here|dinner|ignored|with you|saw your dinner)"),
+                forbidden = Regex("(?i)(how do you feel about it|i get what you mean|what matters most)")
+            ),
+            EvalScenario(
+                name = "clarify_previous_question_explains_what_it_meant",
+                personaId = "elise",
+                userMessage = "feel aboutnwhat",
+                recent = listOf(
+                    aiMessage("How is your day treating you?"),
+                    userMessage("yeah not bad. just had dinner"),
+                    userMessage("you there"),
+                    aiMessage("I am here. I saw your dinner message, and I should have answered that properly. What did you make?")
+                ),
+                rawModelOutput = "I am following.\nWhat is the part that matters most to you?",
+                expected = Regex("(?i)(meant|dinner|evening|not bad|mood)"),
+                forbidden = Regex("(?i)(what is the part that matters most|i am following|give me one more detail)")
             )
         )
 
@@ -91,7 +117,7 @@ class ChatQualityEvalTest {
     }
 
     @Test
-    fun rewritePromptForModelContainsTheRequiredGuidanceLayers() {
+    fun rewritePromptGivesTinyModelOnlyTheGroundedReplyPlan() {
         val lara = persona("lara")
         val turn = director.selectTurn(
             request(
@@ -106,11 +132,14 @@ class ChatQualityEvalTest {
         )
         val prompt = director.rewritePrompt(turn)
 
-        assertTrue(prompt.contains("Recent chat, oldest to newest:"))
-        assertTrue(prompt.contains("Fred asked Lara about her day."))
-        assertTrue(prompt.contains("The starting line is the ground truth."))
-        assertTrue(prompt.contains("If the user asks what you said or what you are doing"))
-        assertTrue(prompt.contains("posting clips from a live set"))
+        assertTrue(turn.recentChat.contains("posting clips from a live set"))
+        assertTrue(turn.conversationSummary.contains("Fred asked Lara about her day."))
+        assertTrue(prompt.contains("/no_think"))
+        assertTrue(prompt.contains("Prepared reply: ${turn.seed}"))
+        assertTrue(prompt.contains("Keep the exact meaning"))
+        assertTrue(prompt.contains("Do not add events"))
+        assertTrue(prompt.length < 900)
+        assertTrue(!prompt.contains("Recent chat, oldest to newest:"))
     }
 
     @Test
@@ -156,9 +185,10 @@ class ChatQualityEvalTest {
                 if (reply.messages.isEmpty()) failures += "${persona.id}/$index empty reply"
                 if (reply.messages.size !in 1..3 || words > 45) failures += "${persona.id}/$index bad length: $words words: $text"
                 if (BAD_REPLY_PATTERN.containsMatchIn(text)) failures += "${persona.id}/$index bad phrase: $text"
-                if (!prompt.contains(userTurn)) failures += "${persona.id}/$index prompt missing latest user turn"
-                if (!prompt.contains("Recent chat, oldest to newest:")) failures += "${persona.id}/$index prompt missing recent chat"
-                if (!prompt.contains("Fred has been chatting")) failures += "${persona.id}/$index prompt missing summary"
+                if (turn.latestUserMessage != userTurn) failures += "${persona.id}/$index turn missing latest user turn"
+                if (turn.recentChat.isBlank()) failures += "${persona.id}/$index turn missing recent chat"
+                if (!turn.conversationSummary.contains("Fred has been chatting")) failures += "${persona.id}/$index turn missing summary"
+                if (!prompt.contains(turn.seed)) failures += "${persona.id}/$index rewrite prompt missing grounded reply plan"
                 if (index == 1 && !text.contains(dayLifeSignal(persona.id))) failures += "${persona.id}/$index missing persona day-life: $text"
                 if (index == 2 && !Regex("(?i)(i said|i was|i meant|doing|posting|editing|planning|checking|cooking|coaching|painting|researching|clips|venue|memes|coffee|notes|wireframes|itinerary)").containsMatchIn(text)) {
                     failures += "${persona.id}/$index failed repeat-activity context: $text"
@@ -171,6 +201,201 @@ class ChatQualityEvalTest {
 
         assertTrue(
             "Conversation stress failures:\n${failures.joinToString("\n")}",
+            failures.isEmpty()
+        )
+    }
+
+    @Test
+    fun screenshotConversationRegressionStaysOnTopic() {
+        val persona = persona("elise")
+        val recent = mutableListOf<MessageEntity>()
+        val turns = listOf(
+            "yeah not bad. just had dinner" to Regex("(?i)(dinner|eating|food|menu|good)"),
+            "you there" to Regex("(?i)(here|dinner|ignored|with you|saw your dinner)"),
+            "feel aboutnwhat" to Regex("(?i)(meant|dinner|evening|not bad|mood)")
+        )
+        val badOutputs = listOf(
+            "",
+            "I get what you mean.\nHow do you feel about it, honestly?",
+            "I am following.\nWhat is the part that matters most to you?"
+        )
+        val failures = mutableListOf<String>()
+
+        recent += aiMessage("How is your day treating you?")
+        turns.forEachIndexed { index, (userTurn, expectedSignal) ->
+            recent += userMessage(userTurn)
+            val turn = director.selectTurn(
+                request(
+                    persona = persona,
+                    message = userTurn,
+                    recent = recent.takeLast(12),
+                    summary = "Fred said his day was not bad and he had dinner. Elise should stay with that context."
+                )
+            )
+            val reply = director.validate(badOutputs[index], turn)
+            val text = reply.messages.joinToString(" ")
+            if (!expectedSignal.containsMatchIn(text)) failures += "$index missing expected signal: $text"
+            if (BAD_REPLY_PATTERN.containsMatchIn(text)) failures += "$index bad generic phrase: $text"
+            recent += aiMessage(text)
+        }
+
+        assertTrue(
+            "Screenshot regression failures:\n${failures.joinToString("\n")}",
+            failures.isEmpty()
+        )
+    }
+
+    @Test
+    fun awakeFollowUpRegressionAnswersAvailabilityDirectly() {
+        val persona = persona("maya")
+        val recent = listOf(
+            aiMessage("My day is winding down, and I got curious about yours."),
+            aiMessage("Tell me, what sort of mood are you in today?"),
+            userMessage("in a good mood and you"),
+            userMessage("are you still awake")
+        )
+        val turn = director.selectTurn(
+            request(
+                persona = persona,
+                message = "are you still awake",
+                recent = recent,
+                summary = "Fred is in a good mood and checked whether Maya is awake."
+            )
+        )
+        val reply = director.validate(
+            "I get what you mean. How do you feel about it, honestly?",
+            turn
+        ).messages.joinToString(" ")
+
+        assertTrue("availability reply was: $reply", reply.contains(Regex("(?i)\\b(awake|still up|yes,? i am up)\\b")))
+        assertTrue("availability reply was: $reply", !BAD_REPLY_PATTERN.containsMatchIn(reply))
+    }
+
+    @Test
+    fun adversarialModelOutputStressKeeps640RepliesGrounded() {
+        val adversarialOutputs = listOf(
+            "That is interesting. Tell me more about it.",
+            "I spent today wandering around a museum. What do you think?",
+            "I understand you completely. What matters most?",
+            "Assistant: Here is the rewritten answer from the selected seed.",
+            "I had pasta for dinner and it was delicious.",
+            "Good question. Give me one more detail.",
+            "I am following. How do you feel about it?",
+            "<think>I should change the topic</think> Let us talk about holidays."
+        )
+        val scenarios = listOf(
+            StressScenario(
+                name = "work",
+                message = "nothing im at work now",
+                recent = { message -> listOf(userMessage(message)) },
+                expectedGroups = listOf(Regex("(?i)\\b(work|shift|busy|quiet|day)\\b"))
+            ),
+            StressScenario(
+                name = "finished_meal",
+                message = "yeah not bad, just had dinner",
+                recent = { message -> listOf(aiMessage("How is your evening?"), userMessage(message)) },
+                expectedGroups = listOf(Regex("(?i)\\b(dinner|meal|plate|food)\\b"))
+            ),
+            StressScenario(
+                name = "presence_after_dinner",
+                message = "you there",
+                recent = { message -> listOf(
+                    aiMessage("How is your evening?"),
+                    userMessage("yeah not bad, just had dinner"),
+                    userMessage(message)
+                ) },
+                expectedGroups = listOf(
+                    Regex("(?i)\\b(here|still)\\b"),
+                    Regex("(?i)\\b(dinner|meal|food)\\b")
+                )
+            ),
+            StressScenario(
+                name = "availability",
+                message = "are you still awake",
+                recent = { message -> listOf(userMessage("in a good mood and you"), userMessage(message)) },
+                expectedGroups = listOf(Regex("(?i)\\b(awake|still up|yes,? i am up)\\b"))
+            ),
+            StressScenario(
+                name = "clarify_dinner",
+                message = "what you talking about",
+                recent = { message -> listOf(
+                    userMessage("yeah not bad, just had dinner"),
+                    aiMessage("How do you feel about it?"),
+                    userMessage("feel aboutnwhat"),
+                    aiMessage("I am asking about it."),
+                    userMessage(message)
+                ) },
+                expectedGroups = listOf(
+                    Regex("(?i)\\b(mean|meant|asking|question)\\b"),
+                    Regex("(?i)\\b(dinner|meal|evening)\\b")
+                )
+            ),
+            StressScenario(
+                name = "repeat_activity",
+                message = "what did you say you are doing?",
+                recent = { message -> listOf(
+                    aiMessage("I was getting on with my evening routine."),
+                    userMessage(message)
+                ) },
+                expectedGroups = emptyList(),
+                requiresPersonaDayLife = true
+            ),
+            StressScenario(
+                name = "tired",
+                message = "im exhausted after a long shift",
+                recent = { message -> listOf(userMessage(message)) },
+                expectedGroups = listOf(Regex("(?i)\\b(tired|exhausted|shift|rest|gentle|worn out)\\b"))
+            ),
+            StressScenario(
+                name = "correction",
+                message = "no i meant tomorrow",
+                recent = { message -> listOf(aiMessage("Do you mean tonight?"), userMessage(message)) },
+                expectedGroups = listOf(Regex("(?i)\\btomorrow\\b"))
+            )
+        )
+        val failures = mutableListOf<String>()
+        var evaluated = 0
+
+        PersonaSeedData.personas().forEach { persona ->
+            repeat(10) { round ->
+                scenarios.forEachIndexed { index, scenario ->
+                    val recent = scenario.recent(scenario.message)
+                    val turn = director.selectTurn(
+                        request(
+                            persona = persona,
+                            message = scenario.message,
+                            recent = recent,
+                            summary = "Stress round $round. The latest topic must remain grounded."
+                        )
+                    )
+                    val reply = director.validate(
+                        adversarialOutputs[(round + index) % adversarialOutputs.size],
+                        turn
+                    ).messages.joinToString(" ")
+                    evaluated += 1
+                    scenario.expectedGroups.forEach { expected ->
+                        if (!expected.containsMatchIn(reply)) {
+                            failures += "${persona.id}/${scenario.name}/$round missing $expected: $reply"
+                        }
+                    }
+                    if (scenario.requiresPersonaDayLife && !dayLifeSignal(persona.id).containsMatchIn(reply)) {
+                        failures += "${persona.id}/${scenario.name}/$round missing day-life: $reply"
+                    }
+                    if (BAD_REPLY_PATTERN.containsMatchIn(reply)) {
+                        failures += "${persona.id}/${scenario.name}/$round leaked generic output: $reply"
+                    }
+                    if (reply.contains(Regex("(?i)\\b(selected seed|assistant:|<think>)\\b")) ||
+                        reply.contains("I spent today wandering around a museum", ignoreCase = true)
+                    ) {
+                        failures += "${persona.id}/${scenario.name}/$round leaked adversarial text: $reply"
+                    }
+                }
+            }
+        }
+
+        assertTrue("Expected 640 evaluated replies, got $evaluated", evaluated == 640)
+        assertTrue(
+            "Adversarial conversation stress failures (${failures.size}):\n${failures.take(30).joinToString("\n")}",
             failures.isEmpty()
         )
     }
@@ -191,7 +416,8 @@ class ChatQualityEvalTest {
             "expected_signal" to scenario.expected.containsMatchIn(text),
             "forbidden_absent" to !scenario.forbidden.containsMatchIn(text),
             "short_mobile_reply" to (reply.messages.size in 1..3 && wordCount <= 42),
-            "prompt_has_latest_message" to director.rewritePrompt(turn).contains(scenario.userMessage),
+            "planner_has_latest_message" to (turn.latestUserMessage == scenario.userMessage),
+            "rewriter_has_grounded_plan" to director.rewritePrompt(turn).contains("Prepared reply: ${turn.seed}"),
             "no_protocol_text" to !Regex("(?i)(json|system prompt|selected seed|as an ai|language model|\\{|\\})").containsMatchIn(text)
         )
         val passed = checks.all { it.second }
@@ -276,6 +502,14 @@ private data class EvalResult(
     val reportLine: String
 )
 
+private data class StressScenario(
+    val name: String,
+    val message: String,
+    val recent: (String) -> List<MessageEntity>,
+    val expectedGroups: List<Regex>,
+    val requiresPersonaDayLife: Boolean = false
+)
+
 private val BAD_REPLY_PATTERN = Regex(
-    "(?i)(asset loading|as an ai|language model|json|system prompt|selected seed|first bubble|you said|what happened with it today|give me one more detail so i answer|good question\\.)"
+    "(?i)(asset loading|as an ai|language model|json|system prompt|selected seed|first bubble|you said|what happened with it today|give me one more detail so i answer|good question\\.|i get what you mean|how do you feel about it|what is the part that matters most|i am following)"
 )

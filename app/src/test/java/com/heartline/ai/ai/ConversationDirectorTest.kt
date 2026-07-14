@@ -32,6 +32,13 @@ class ConversationDirectorTest {
         assertEquals("ask_persona_wellbeing", director.detectIntent("good and you"))
         assertEquals("ask_persona_day", director.detectIntent("what are you up to?"))
         assertEquals("ask_repeat_persona_activity", director.detectIntent("good. what did you say you are doing?"))
+        assertEquals("user_presence_check", director.detectIntent("you there"))
+        assertEquals("ask_persona_availability", director.detectIntent("are you still awake"))
+        assertEquals("ask_clarify_previous_question", director.detectIntent("feel aboutnwhat"))
+        assertEquals("ask_clarify_previous_question", director.detectIntent("what you talking about"))
+        assertEquals("user_finished_meal", director.detectIntent("yeah not bad, just had dinner"))
+        assertEquals("user_correction", director.detectIntent("no i meant tomorrow"))
+        assertEquals("user_preference", director.detectIntent("I like late night music"))
         assertEquals("user_tired", director.detectIntent("I am absolutely drained"))
         assertEquals("general_question", director.detectIntent("what"))
     }
@@ -85,8 +92,70 @@ class ConversationDirectorTest {
 
         assertEquals("ask_persona_day", turn.intent)
         assertTrue(turn.currentActivity.contains("cafe photos"))
-        assertTrue(director.rewritePrompt(turn).contains("Fred has a presentation"))
+        assertTrue(turn.conversationSummary.contains("Fred has a presentation"))
+        assertTrue(director.rewritePrompt(turn).contains("Prepared reply:"))
+        assertTrue(director.rewritePrompt(turn).contains("/no_think"))
+        assertFalse(director.rewritePrompt(turn).contains("Recent chat"))
         assertTrue(turn.seed.contains("cafe photos"))
+    }
+
+    @Test
+    fun novelGenericModelTextCannotReplaceGroundedDinnerReply() {
+        val request = request(
+            message = "you there",
+            recent = listOf(
+                aiMessage("How is your evening going?"),
+                userMessage("yeah not bad, just had dinner"),
+                userMessage("you there")
+            )
+        )
+        val turn = director.selectTurn(request)
+        val reply = director.validate("That sounds interesting. Tell me more about it.", turn)
+        val text = reply.messages.joinToString(" ")
+
+        assertEquals("user_presence_check", turn.intent)
+        assertTrue(text.contains(Regex("(?i)\\b(here|still)\\b")))
+        assertTrue(text.contains(Regex("(?i)\\b(dinner|meal|food)\\b")))
+        assertFalse(text.contains("interesting", ignoreCase = true))
+    }
+
+    @Test
+    fun modelCannotInvertWhoAteOrWhoIsTired() {
+        val mealTurn = director.selectTurn(request("yeah not bad, just had dinner"))
+        val mealReply = director.validate("I had pasta for dinner and it was delicious.", mealTurn)
+            .messages.joinToString(" ")
+        val tiredTurn = director.selectTurn(request("im exhausted after a long shift"))
+        val tiredReply = director.validate("I am exhausted after my shift too.", tiredTurn)
+            .messages.joinToString(" ")
+
+        assertFalse(mealReply.contains(Regex("(?i)\\bI (had|ate)\\b")))
+        assertTrue(mealReply.contains(Regex("(?i)\\b(dinner|meal|plate)\\b")))
+        assertFalse(tiredReply.contains(Regex("(?i)\\bI (am|'m) (tired|exhausted)\\b")))
+        assertTrue(tiredReply.contains(Regex("(?i)\\b(tired|exhausted|shift|rest|gentle|worn out)\\b")))
+    }
+
+    @Test
+    fun clarificationWalksBackToLastMeaningfulTopic() {
+        val turn = director.selectTurn(
+            request(
+                message = "what you talking about",
+                recent = listOf(
+                    aiMessage("How is your day treating you?"),
+                    userMessage("yeah not bad, just had dinner"),
+                    userMessage("you there"),
+                    aiMessage("I am here. I saw your dinner message. What did you have?"),
+                    userMessage("feel aboutnwhat"),
+                    aiMessage("How do you feel about it?"),
+                    userMessage("what you talking about")
+                )
+            )
+        )
+        val reply = director.validate("I understand. What matters most to you?", turn)
+            .messages.joinToString(" ")
+
+        assertEquals("ask_clarify_previous_question", turn.intent)
+        assertTrue(reply.contains(Regex("(?i)\\b(mean|meant|asking)\\b")))
+        assertTrue(reply.contains(Regex("(?i)\\b(dinner|evening|meal)\\b")))
     }
 
     @Test

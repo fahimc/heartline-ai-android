@@ -96,14 +96,14 @@ fun SettingsScreen(viewModel: SettingsViewModel, onBack: () -> Unit) {
                 OutlinedButton(onClick = viewModel::clearAllMemories) { Text("Clear all memories") }
             }
             Section("AI Engine") {
-                Text("SmolLM2 runs privately on this device and uses each chat's local history and memories.")
+                Text("Qwen3 runs privately on this device. Heartline grounds each reply in the current chat, persona, and local memories before generation.")
                 Text("Response length")
                 ChipRow(listOf("Short", "Normal", "Detailed"), settings.responseLength) {
-                    viewModel.updateAi("Bundled SmolLM2", it, settings.memoryRetrieval)
+                    viewModel.updateAi("Bundled Qwen3", it, settings.memoryRetrieval)
                 }
                 Text("Memory retrieval")
                 ChipRow(listOf("Basic", "Strong", "Off"), settings.memoryRetrieval) {
-                    viewModel.updateAi("Bundled SmolLM2", settings.responseLength, it)
+                    viewModel.updateAi("Bundled Qwen3", settings.responseLength, it)
                 }
             }
             Section("Appearance") {

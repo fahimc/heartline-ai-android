@@ -23,33 +23,63 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class BundledLlmQualityInstrumentedTest {
     @Test
-    fun bundledModelRewritesGuidedRepliesWithoutBreakingContext() = runBlocking {
+    fun bundledModelProducesTextAndFinalRepliesStayGroundedAcrossConversationFailures() = runBlocking {
         assumeTrue("LiteRT-LM bundled inference is arm64-only", Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a")
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val provider = BundledLlmModelProvider(context, ModelAssetManager(context))
         provider.preload()
+        val scenarios = listOf(
+            ModelScenario(
+                personaId = "lara",
+                message = "good. what did you say you are doing?",
+                recent = listOf(
+                    userMessage("hows your day", "thread-lara"),
+                    aiMessage("I am posting clips from a live set and saving ridiculous memes from the venue chat.", "thread-lara"),
+                    aiMessage("How is your day treating you?", "thread-lara")
+                ),
+                expected = Regex("(?i)(live set|venue|clips|memes|posting)")
+            ),
+            ModelScenario(
+                personaId = "elise",
+                message = "you there",
+                recent = listOf(
+                    aiMessage("How is your evening?", "thread-elise"),
+                    userMessage("yeah not bad, just had dinner", "thread-elise"),
+                    userMessage("you there", "thread-elise")
+                ),
+                expected = Regex("(?i)(here|still).*(dinner|meal|food)|(dinner|meal|food).*(here|still)")
+            ),
+            ModelScenario(
+                personaId = "maya",
+                message = "are you still awake",
+                recent = listOf(
+                    userMessage("in a good mood and you", "thread-maya"),
+                    userMessage("are you still awake", "thread-maya")
+                ),
+                expected = Regex("(?i)(awake|still up|yes,? i am up)")
+            )
+        )
 
-        val reply = withTimeout(30_000) {
-            provider.generateReply(
-                request(
-                    personaId = "lara",
-                    message = "good. what did you say you are doing?",
-                    recent = listOf(
-                        userMessage("hows your day"),
-                        aiMessage("I am posting clips from a live set and saving ridiculous memes from the venue chat."),
-                        aiMessage("How is your day treating you?")
+        scenarios.forEach { scenario ->
+            val reply = withTimeout(30_000) {
+                provider.generateReply(
+                    request(
+                        personaId = scenario.personaId,
+                        message = scenario.message,
+                        recent = scenario.recent
                     )
-                )
-            ).first()
-        }
-        val text = JSONObject(reply)
-            .getJSONArray("messages")
-            .let { array -> (0 until array.length()).joinToString(" ") { array.getString(it) } }
+                ).first()
+            }
+            val text = JSONObject(reply)
+                .getJSONArray("messages")
+                .let { array -> (0 until array.length()).joinToString(" ") { array.getString(it) } }
 
-        assertTrue(text.contains(Regex("(?i)(live set|venue|clips|memes|posting)")))
-        assertFalse(text.contains(Regex("(?i)(good question|give me one more detail|json|system prompt|as an ai)")))
-        assertTrue(text.split(Regex("\\s+")).size <= 45)
+            assertTrue("Qwen returned no text for ${scenario.message}", provider.lastReplyDiagnostics.modelOutputReceived)
+            assertTrue("Off-topic reply for ${scenario.message}: $text", scenario.expected.containsMatchIn(text))
+            assertFalse(text.contains(Regex("(?i)(good question|give me one more detail|json|system prompt|as an ai|what matters most)")))
+            assertTrue(text.split(Regex("\\s+")).size <= 45)
+        }
     }
 
     private fun request(
@@ -82,18 +112,25 @@ class BundledLlmQualityInstrumentedTest {
         )
     }
 
-    private fun userMessage(content: String) = MessageEntity(
+    private fun userMessage(content: String, threadId: String = "thread-lara") = MessageEntity(
         id = "u-${content.hashCode()}",
-        threadId = "thread-lara",
+        threadId = threadId,
         senderType = "USER",
         content = content
     )
 
-    private fun aiMessage(content: String) = MessageEntity(
+    private fun aiMessage(content: String, threadId: String = "thread-lara") = MessageEntity(
         id = "a-${content.hashCode()}",
-        threadId = "thread-lara",
+        threadId = threadId,
         senderType = "AI",
         content = content,
         source = "AI_REPLY"
+    )
+
+    private data class ModelScenario(
+        val personaId: String,
+        val message: String,
+        val recent: List<MessageEntity>,
+        val expected: Regex
     )
 }

@@ -1,42 +1,80 @@
 # Chat Quality Evals
 
-Heartline uses the small local model as a rewriter, not as the whole chat brain.
-The app must pass deterministic response-director evals before a model swap is useful.
+Heartline does not let a sub-1B model decide the subject of a reply. The runtime
+path is:
 
-## What The Evals Check
+1. Detect the latest user intent.
+2. Combine that intent with the persona routine, relationship state, memories,
+   recent messages, and conversation summary.
+3. Select a context-grounded reply plan from the response bank.
+4. Ask the bundled model to rewrite that plan in the persona voice.
+5. Reject the rewrite if it changes topic, speaker, facts, or length.
+6. Save the validated bubbles and any memory candidates.
 
-- Directly answers the latest user message.
-- Uses preset response seeds as guidance instead of inventing a new topic.
-- Includes persona day-life when the user asks about the companion's day.
-- Uses recent chat context for follow-up questions like "what did you say you were doing?"
-- Keeps replies to 1-3 short mobile bubbles.
-- Rejects protocol leaks, raw JSON, quote-back replies, and generic clarification loops.
+This split matters because every tested model below one billion parameters can
+lose a conversational reference or invent a fact when asked to plan and write a
+reply in one pass.
 
-## Current Test Coverage
+## Regression And Stress Coverage
 
-- `ConversationDirectorTest`: intent detection, fallback validation, JSON leak prevention, repetition handling, memory candidates.
-- `ChatQualityEvalTest`: deterministic multi-scenario quality matrix across Lara, Maya, Amina, and Nia.
-- `BundledLlmQualityInstrumentedTest`: arm64-only real bundled-model rewrite eval for the Lara follow-up context failure.
+- `ConversationDirectorTest` covers intent precedence, context recovery,
+  speaker inversion, malformed model output, repetition, and memory extraction.
+- `ChatQualityEvalTest` includes the reported dinner, presence, clarification,
+  availability, work, fatigue, correction, and repeated-activity regressions.
+- Its adversarial matrix runs 8 personas x 8 scenarios x 10 hostile model
+  outputs: 640 validated replies. A reply fails if it drops the required topic,
+  accepts a generic answer, leaks model protocol, or invents the wrong speaker.
+- `BundledLlmQualityInstrumentedTest` exercises the real bundled LiteRT model on
+  arm64 Android. It is skipped on x86 emulators because LiteRT-LM inference in
+  this app is arm64-only.
 
-## Model Decision
+Run the deterministic suite with:
 
-Current target: `litert-community/SmolLM2-360M-Instruct`.
+```powershell
+.\gradlew.bat :app:testDebugUnitTest
+```
 
-Reason:
-- It is already packaged for Android LiteRT-LM.
-- It stays under the 0.8B limit.
-- It is the next SmolLM2 size above 135M, which gives the rewriter more language capacity without changing architecture.
+## Sub-1B Model Evaluation
 
-Rejected for now:
-- Qwen3-0.6B: under 0.8B, but needs stricter thinking-mode controls and is a larger architecture migration for this app.
-- Qwen2.5-0.5B-Instruct: under 0.8B and available in LiteRT form, but the app already has a SmolLM2 LiteRT pipeline and the next controlled comparison should be 135M vs 360M first.
+The comparison was run on 2026-07-13 and 2026-07-14 with official Transformers
+checkpoints on Windows CPU. Ten short multi-turn scenarios tested corrections,
+pronoun ownership, recent-chat references, persona day-life, memory follow-ups,
+and topic continuity. A protocol label, invented event, reversed speaker, or
+off-topic generic answer counted as a failure.
 
-## Next Comparison
+| Model | Parameters | Full-context score | Compact-rewriter score | Android result |
+| --- | ---: | ---: | ---: | --- |
+| SmolLM2-360M-Instruct | 360M | 8/10 nominal | 3/10 | Rejected: leaked labels and invented turns despite nominal matches |
+| Qwen2.5-0.5B-Instruct | 500M | 6/10 | Not run | Rejected: lost corrections and memory follow-ups |
+| Qwen3-0.6B | 600M | 6/10 | 5/10 | Selected: strongest compatible compact rewriter with an official LiteRT asset |
+| LFM2-700M | 700M | 7/10 | Not run | Strong candidate, but no official LiteRT package; CPU average was about 4.63 s |
+| Qwen3.5-0.8B | 800M | 7/10 | 1/10 | Rejected: poor constrained rewriting and roughly 1.1 GB LiteRT package |
 
-Run the arm64 instrumented eval on a real Android device for:
+The full-context SmolLM2 number is marked nominal because several outputs matched
+a keyword while also exposing prompt labels or fabricating a turn. It was not a
+usable 8/10 conversation result.
 
-1. SmolLM2-135M-Instruct
-2. SmolLM2-360M-Instruct
-3. Qwen2.5-0.5B-Instruct LiteRT
+The reproducible Hugging Face harness is `tools/evaluate_sub1b_models.py`. Model
+downloads are intentionally not part of Gradle or CI:
 
-Keep the model only if it improves the eval matrix without increasing no-response timeouts or generic fallback rates.
+```powershell
+python tools/evaluate_sub1b_models.py --model Qwen/Qwen3-0.6B --mode rewrite
+```
+
+## Runtime Decision
+
+The APK target is `litert-community/Qwen3-0.6B` mixed INT4:
+
+- File: `qwen3_0_6b_mixed_int4.litertlm`
+- Size: `497,664,000` bytes
+- SHA-256: `b1baab462f6be49d70eada79d715c2c52cd9ece0cad00bddf6a2c097d23498e9`
+- Thinking is disabled with `/no_think`.
+- The rewriter receives only the prepared reply, not raw conversation history.
+- A semantic validator requires plan overlap and intent-specific topic signals.
+- Timeout, busy-engine, malformed, repetitive, or off-topic output falls back to
+  the grounded plan, so a model failure cannot become a blank chat response.
+
+Qwen3-0.6B is not treated as a general conversational brain. It is the best fit
+among the tested models for this Android runtime after deployment size,
+availability of a verified LiteRT artifact, rewrite quality, and latency risk are
+considered together.

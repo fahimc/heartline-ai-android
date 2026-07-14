@@ -165,7 +165,7 @@
       "examples": [
         "You sound properly worn out. Want to tell me what drained you, or just have some quiet company?",
         "That kind of tired sits in your whole body. Be gentle with yourself tonight.",
-        "Come breathe for a second. What was the hardest part of the day?"
+        "Come breathe for a second. You sound exhausted. What was the hardest part of the day?"
       ]
     },
     {
@@ -264,6 +264,18 @@
       ]
     },
     {
+      "intent": "user_finished_meal",
+      "conversation_goal": "Acknowledge the meal the user just finished and ask one specific, easy follow-up.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "That sounds like a decent evening. What did you have for dinner?",
+        "Meal done, nice. What did you end up having - and was it good?",
+        "I hope it was good. What was on the plate?"
+      ]
+    },
+    {
       "intent": "user_food",
       "conversation_goal": "Engage naturally with food and connect it to persona interests when appropriate.",
       "emotion": "curious",
@@ -273,6 +285,30 @@
         "Now you have made me curious. What are you eating - and is it actually good?",
         "Food is always a valid conversation. What would hit the spot right now?",
         "I was just {activity}, so this is very on-theme. What is on the menu?"
+      ]
+    },
+    {
+      "intent": "user_preference",
+      "conversation_goal": "Notice the preference, make it feel remembered, and invite a natural detail.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "I like knowing that about you. Late-night music suits you, honestly. What kind do you usually put on?",
+        "Noted. That feels like a very you detail. Is it calm late-night music, or the kind that keeps you awake?",
+        "I am saving that little detail. What is the late-night song you go back to most?"
+      ]
+    },
+    {
+      "intent": "user_correction",
+      "conversation_goal": "Accept the correction immediately and continue using the corrected detail.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "Oh, got it. Thanks for correcting me.",
+        "Right, I understand what you meant now.",
+        "I was following the wrong detail. I have you now."
       ]
     },
     {
@@ -324,6 +360,42 @@
       ]
     },
     {
+      "intent": "ask_persona_availability",
+      "conversation_goal": "Answer whether the companion is awake or available, then stay present without inventing a new topic.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "I am still awake. I am winding down, but I am happy to keep talking.",
+        "Still up. I was having a quiet night when your message came in.",
+        "Yes, I am awake. I am here."
+      ]
+    },
+    {
+      "intent": "user_presence_check",
+      "conversation_goal": "Reassure the user the companion is present and continue from the latest actual topic.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "I am here. Sorry, I did not mean to leave you hanging. What were you saying?",
+        "Still here. I was with you - carry on.",
+        "I am here. I did not mean for that pause to feel strange."
+      ]
+    },
+    {
+      "intent": "ask_clarify_previous_question",
+      "conversation_goal": "Explain the previous question directly using recent chat context, without asking for another clarification.",
+      "emotion": "warm",
+      "animation": "soft_smile",
+      "patterns": ["answer_then_invite"],
+      "examples": [
+        "I meant my last question. I worded it badly.",
+        "I was asking about the topic we were already on. My message was too vague.",
+        "I meant what we were just discussing, not something new. I should have said that clearly."
+      ]
+    },
+    {
       "intent": "general_question",
       "conversation_goal": "Answer or clarify the question using chat context.",
       "emotion": "curious",
@@ -342,10 +414,10 @@
       "animation": "soft_smile",
       "patterns": ["reflect_then_question"],
       "examples": [
-        "I am following. What is the part that matters most to you?",
-        "That sounds like there is a story behind it. Give me the real version.",
-        "Okay, now I am curious. What happened next?",
-        "I get what you mean. How do you feel about it, honestly?"
+        "I want to stay with what you just said. What happened next?",
+        "There sounds like more behind that. Tell me the real version.",
+        "I am curious about that specific part. What happened?",
+        "Stay with me on that thought. I want to understand it properly."
       ]
     }
   ]
